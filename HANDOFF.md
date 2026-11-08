@@ -204,7 +204,7 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
    npm view dsh-mobi-web version           # must still be 404
    npm publish                             # 12 files, 3.0 MB
    git tag v0.1.0 && git push origin v0.1.0
-   gh release create v0.1.0 --title v0.1.0 --notes-file /tmp/notes.md
+   gh release create v0.1.0 --title v0.1.0 --notes-file docs/release-notes/v0.1.0.md
    ```
 
    Two traps: the agent sandbox cannot write `~/.npm`, so `npm publish` has to run from a normal terminal (or with full-disk approval); and the local `link:` installs prove nothing about the tarball — after publishing, install **from the registry** on a throwaway profile (the step-2 recipe) and re-run the health/login checks. That last check is the real definition of done: the `files` whitelist, not the checkout, decides what ships.
