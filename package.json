@@ -1,0 +1,14 @@
+{
+  "name": "dsh-mobile-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sidecar HTTP/WS gateway that exposes the DeepSeek Harness web UI on a stable port for Tailscale or Cloudflare Tunnel access",
+  "main": "index.mjs",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

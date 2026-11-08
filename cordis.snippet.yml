@@ -1,0 +1,11 @@
+# 追加到 ~/.dsh/profiles/desktop/cordis.patch.yml 末尾（不要替换整个文件）。
+# patch 层按 id 覆盖/插入；这段只新增一行，不动你已有的 webhook / MCP 配置。
+- insert:
+    - id: mobile-gateway
+      name: './plugins/mobile-gateway/index.mjs'
+      config:
+        listenHost: '127.0.0.1'
+        listenPort: 3080
+        # 走 Tailscale 可以留空；走公网隧道请务必设置（或用环境变量 DSH_GATEWAY_TOKEN）。
+        # 注意：Finder 启动的 App 没有 shell 环境，最稳的是直接写一个值。
+        token: ''
