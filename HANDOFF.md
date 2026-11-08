@@ -181,7 +181,7 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
 
 - ~~Screenshots~~ — `docs/screenshot-sessions.png`, rendered from the real page against a fabricated session list (so no real workspace names ship), 390×844 @2x. The fixture script was a throwaway; regenerate by serving `lib/page.html` with a stub `/m/api/sessions`.
 - ~~A compatibility line~~ — in the README under "Limits worth knowing"; DSH `0.2.2-rc.1`, with the private-API caveat.
-- ~~CI~~ — `.github/workflows/test.yml`, `node --test test/*.test.mjs` on Node 20 and 24, push + PR. **Not yet observed running**: it needs a push to GitHub.
+- ~~CI~~ — `.github/workflows/test.yml`, `node --test test/*.test.mjs` on Node 20 and 24, push + PR. **Green on the first run** (42494632153): both jobs success, so the Node 20 floor holds too.
 - ~~English summary~~ — the README is English throughout.
 - `npm pack --dry-run`: 12 files, 3.0 MB packed / 5.7 MB unpacked (mermaid is 5.4 MB of it). Publishing needs the npm cache to be writable, which the agent sandbox blocks — do it from a normal terminal or with approval.
 
@@ -200,7 +200,7 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
 ### Definition of done
 
 - ~~A clean profile installs the bundle with one documented action and serves `/m/` with a minted token.~~ — done, twice (clean copy + this machine).
-- `npm test` green **on CI** — green locally (27), CI itself still missing.
+- `npm test` green **on CI** — 27 tests, green on Node 20 and 24 (run 42494632153).
 - README opens with what it is, what it exposes, and how to keep it private. — partially: the security warning is still below "Install" (blocker 4).
 - ~~The old hand-rolled install and the launchd guard are retired.~~ — the install is gone (dir deleted, rollback copy kept); the **guard is still loaded**, now protecting only the override row.
 
