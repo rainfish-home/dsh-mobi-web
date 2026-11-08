@@ -30,12 +30,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rainfish-home/dsh-mobi-web-plugin.git"
+    "url": "git+https://github.com/rainfish-home/dsh-mobi-web.git"
   },
   "bugs": {
-    "url": "https://github.com/rainfish-home/dsh-mobi-web-plugin/issues"
+    "url": "https://github.com/rainfish-home/dsh-mobi-web/issues"
   },
-  "homepage": "https://github.com/rainfish-home/dsh-mobi-web-plugin#readme",
+  "homepage": "https://github.com/rainfish-home/dsh-mobi-web#readme",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
