@@ -2,7 +2,7 @@
 
 State as of the last deploy: **gateway module `gateway34.mjs`**, **page build `v36`**, **25 tests passing**. The bundle is named **`dsh-mobi-web`** (renamed from `dsh-mobile-gateway` — see "Publishing").
 
-The repo is now packaged as a DSH bundle (`d24d9f8`), but it is **not published and not yet installed that way** — see "Publishing" at the bottom.
+The repo is now packaged as a DSH bundle (`d24d9f8`), but it is **not published and not yet installed that way** on this machine. Its **CLI install path is verified** on a throwaway clean profile (2026-11-08); the desktop plugin-manager path and the migration of this machine are not — see "Publishing" at the bottom.
 
 The page shows its build in the footer (`446ms · v36`). Always read it before debugging a "it's broken on my phone" report — a stale build means a caching problem, not a code problem.
 
@@ -130,23 +130,47 @@ Renamed in `package.json`, `cordis.patch.yml` (`id`/`name`), the exported `name`
 
 The README now opens with the differentiation: the other package is "scan a QR code + a settings page + live sync"; this one is a **32 KB phone-first page**, **approvals that stay on the phone when the phone started the turn**, and Mermaid rendering. Without that sentence it reads like a duplicate.
 
-**2. The bundle install path has never been exercised.** This machine still runs the hand-rolled install (copied `gateway34.mjs` + hand-written patch row + the launchd guard). `dsh plugin add …` and the in-app plugin manager have not been tried against a clean profile. Everything in the README about installing is currently *inferred from the reference bundle*, not observed.
+**2. ~~The bundle install path has never been exercised~~ — CLI path verified on a clean profile.** Reproduced on a copy of the shipped `web` template, booted from an isolated `$DSH_HOME` so the live app was never touched:
+
+```
+cp -a ~/.dsh/profiles/web ~/.dsh/profiles/bundlecheck
+dsh plugin --profile bundlecheck add link:<repo>
+  → dependencies: + dsh-mobi-web 0.1.0 <- <repo>
+  → dsh.profile.bundles: [@deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app, dsh-mobi-web]
+dsh --profile bundlecheck --dump-config
+  → row `dsh-mobi-web`, config listenHost 127.0.0.1 / listenPort 3083 (from the bundle)
+```
+
+`dsh plugin add` is not a bare pnpm forwarder: after pnpm exits it reconciles `dsh.profile.bundles` against the installed state and appends any dependency whose manifest declares `dsh.bundle.patch` (`@deepseek-ai/dsh/lib/plugin-9h8shc4d.js`, `reconcilePlugins`). That is why the one-liner is enough — **provided `package.json` keeps `dsh.bundle.patch`.** Booting that profile (port overridden to 3183 for the test; the app command line is `dsh --profile <name> --port <n>` — appending `web` is rejected, since the profile name *is* the app) gave:
+
+| check | result |
+| --- | --- |
+| `GET /__gw/health` | 200 |
+| `GET /m/` without cookie | 401 |
+| `$DSH_HOME/dsh-mobi-web-token` | minted, 33 bytes, mode 0600 |
+| `POST /__gw/login` → `GET /m/` | 302 → 200 |
+| `GET /m/api/sessions` | real workspace/session JSON |
+| `GET /__gw/stats` | counters + approval diagnostics |
+
+Not yet observed: the **desktop plugin manager** path (that is step 3, and it mutates this machine). Also unverified: an install from the *registry* rather than `link:` — pnpm resolves `link:` locally, so tarball/first-publish behaviour is still inferred.
 
 **3. The desktop client cannot install via the CLI.** Install with `dsh plugin --profile web add <pkg>` works for the web profile, but `--profile desktop` is rejected (it errored out when tried). Desktop users have to install through the app's own plugin manager. The README must document both paths separately.
 
 **4. The security section is buried.** Holding the token means: send prompts, approve tool calls (shell included), read every session on the machine. That belongs at the top of the README, with "put it behind Tailscale, not a public tunnel" next to it.
 
+**5. The minted token is never logged.** The README says the token is "printed in the startup log"; it is not. `resolveToken()` mints silently and `apply()` only reports `listening on … (token required)` plus `log in with the configured token` (lib/index.js `resolveToken`, and the `say('info', …)` pair at the listen callback). Worse, `say()` prefers `ctx.logger`, so in a CLI boot *no* `[dsh-mobi-web]` line reaches stdout at all — the test instance printed only `dsh web: …`. A fresh installer therefore has to know to `cat $DSH_HOME/dsh-mobi-web-token` from the README. Pick one: log the path (safe) or the token itself (convenient, but a secret in a log file), and make `say()` fall back to stdout when the logger is silent. Either way the README sentence needs to match reality.
+
 ### Still missing for a release
 
 - Screenshots (the ones in the design notes work).
-- A compatibility line: verified on DSH `0.2.1-rc.5` only; `ctx.get('sessionQuery')` and friends are private API and can drift.
+- A compatibility line: verified on DSH `0.2.2-rc.1` (installation reports `dsh 0.2.2-rc.1`; the packaging was written against `0.2.1-rc.5`); `ctx.get('sessionQuery')` and friends are private API and can drift.
 - CI running `npm test` on push.
 - An English summary if the audience is not only Chinese-speaking.
 
 ### Order of work
 
 1. ~~**Rename** to `dsh-mobi-web`~~ — **done** (package, `cordis.patch.yml` id/name, exported name, token filename, both docs). Remaining sub-item: the GitHub repo is still `dsh-mobi-web-plugin`.
-2. **Verify the bundle install on a clean profile**: copy the profile, `dsh plugin --profile <copy> add link:<repo>`, start it, confirm the gateway row appears and `/m/` answers. Then repeat through the desktop plugin manager.
+2. ~~**Verify the bundle install on a clean profile**~~ — **done for the CLI path** (recipe and evidence under blocker 2). The desktop-plugin-manager half moves with step 3.
 3. **Migrate this machine** to the bundle install — `dsh plugin add link:…` **or** the in-app manager. This restarts the gateway, so do it while watching the app; keep the guard until the bundle install is proven. After that the whole copy/bump-id/refresh-snapshot ritual disappears.
 4. **Finish the docs**: screenshots, security section first, compatibility, both install paths.
 5. **Publish**: `0.1.0` → `npm publish` → GitHub release → CI.
