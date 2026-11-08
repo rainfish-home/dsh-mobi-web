@@ -25,6 +25,8 @@ The login token lives in `$DSH_HOME/dsh-mobi-web-token` (0600) — do not paste 
 
 **Known wart:** the patch-guard agent is still loaded, now protecting only the 5-line config override. It is the last piece of the old installation; retire it once the app has gone a few restarts without dropping the override.
 
+Observation log for that decision: the app last rewrote `cordis.patch.yml` on **2026-10-30** (the `.bak.20261030-*` files); the restarts on 2026-11-08 and 2026-11-09 added no new backup and left the override intact. If that holds for another restart or two, `launchctl bootout gui/$(id -u)/com.dsh.patch-guard` + delete the plist is the last line of the definition of done.
+
 ## Deploy recipe
 
 The ritual is gone — the profile links this directory, and bundle patches are composed by the app.
