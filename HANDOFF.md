@@ -1,6 +1,6 @@
 # HANDOFF
 
-State as of 2026-11-08: **this machine runs the bundle**, `lib/index.js` + `lib/page.html` served straight from this checkout, **27 tests passing**. The bundle is named **`dsh-mobi-web`** (renamed from `dsh-mobile-gateway` — see "Publishing"). It is still **not published**, and the desktop install is a `link:` to this directory.
+State as of 2026-11-09: **published** as `dsh-mobi-web@0.1.0` on npm, release `v0.1.0`, CI green on Node 20 + 24, 27 tests. **This machine runs the bundle** from a `link:` to this checkout — `lib/index.js` and `lib/page.html` are served straight from here.
 
 The bundle install path is verified twice: on a throwaway clean profile (step 2) and on the real desktop profile (step 3, `scripts/migrate-desktop-to-bundle.sh`). What the flip proved: the row composes as `127.0.0.1:3083`, `GET /__gw/health` 200, `/m/` 401 → 200 after a login with the existing password, `/m/api/sessions` returns real JSON, and both tunnels answer 200.
 
@@ -196,7 +196,9 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
 
    One surprise worth remembering: the app kept serving the *old* module across an earlier `dsh plugin add` — a new bundle only mounts on a restart. The install itself is live-safe; the row is not.
 4. ~~**Finish the docs**~~ — **done**: security first, both install paths (npm CLI for web; plugin manager / Desktop command for `desktop`), compatibility line, screenshot. What is left of this step is *review*, not writing.
-5. **Publish** — the only step left. Repo is renamed to `dsh-mobi-web`, URLs updated, CI green; what is missing is an npm account with 2FA.
+5. ~~**Publish**~~ — **done 2026-11-09**: `dsh-mobi-web@0.1.0`, tag + GitHub release, and the registry build verified by installing it into a throwaway profile.
+
+   What the first publish looked like, because it is not obvious: for a **brand-new package** npm answers `PUT 202 Accepted` and creates a `0.0.0-stage` placeholder ("Temporary package placeholder for staged publishing"); the real version appeared about five minutes later. `npm stage list` stays empty — that is processing, not an approval queue. The publish also goes through the browser web-auth flow when 2FA is on, so it cannot run unattended.
 
    Publish runbook:
 
@@ -222,10 +224,10 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
 
 ### Definition of done
 
-- ~~A clean profile installs the bundle with one documented action and serves `/m/` with a minted token.~~ — done, twice (clean copy + this machine).
-- `npm test` green **on CI** — 27 tests, green on Node 20 and 24 (run 42494632153).
-- README opens with what it is, what it exposes, and how to keep it private. — partially: the security warning is still below "Install" (blocker 4).
-- ~~The old hand-rolled install and the launchd guard are retired.~~ — the install is gone (dir deleted, rollback copy kept); the **guard is still loaded**, now protecting only the override row.
+- ~~A clean profile installs the bundle with one documented action and serves `/m/` with a minted token.~~ — done three times: a clean copy, this machine, and **from the registry** after publishing.
+- ~~`npm test` green on CI~~ — 27 tests, green on Node 20 and 24 (run 42494632153, and again on every push since).
+- ~~README opens with what it is, what it exposes, and how to keep it private.~~ — the exposure section is the first thing after the intro.
+- The old hand-rolled install and the launchd guard are retired. — install: gone (dir deleted, rollback copy kept). **Guard: still loaded**, protecting only the 5-line override row. This is the last open item; retire it after a few restarts without the app dropping the override.
 
 ## Decisions worth not relitigating
 
