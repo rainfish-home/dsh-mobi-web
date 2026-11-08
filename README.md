@@ -59,7 +59,7 @@ tailscale serve --bg 3083          # phone on the same tailnet
 
 Open `https://<your-host>/m/`.
 
-**The password.** If you do not set `token` in the patch config, one is minted on first start, written to `$DSH_HOME/dsh-mobi-web-token` (mode 0600) and printed in the startup log. Set `token: '…'` to choose your own, or `token: false` to disable the gate — only on a network you fully trust.
+**The password.** If you do not set `token` in the patch config, one is minted on first start and written to `$DSH_HOME/dsh-mobi-web-token` (mode 0600). The startup log prints *where* it is, not the token itself — `cat` that file to read it. (The token is echoed only when the file could not be written, i.e. when that process holds the only copy.) Set `token: '…'` to choose your own, or `token: false` to disable the gate — only on a network you fully trust.
 
 > **Read this before exposing it.** The gateway proxies the *whole* harness, not just chat: whoever holds the token can send prompts, approve tool calls (including shell commands) and read every session on that machine. Put it behind Tailscale (private) rather than a public tunnel unless you know what you are doing, and never reuse a token from anywhere else.
 
@@ -113,11 +113,11 @@ lib/index.js      the gateway plugin (single file on purpose: it is hot-reloaded
 lib/page.html     the mobile page, served from disk on every request
 assets/           vendored mermaid (js + gz + br) and the app icon
 cordis.patch.yml  bundle patch — the install declaration
-test/             25 tests, fake host services, no network
+test/             27 tests, fake host services, no network
 ```
 
 ## Tests
 
 ```bash
-node --test test/*.test.mjs    # 25 tests, no network, fake host services
+node --test test/*.test.mjs    # 27 tests, no network, fake host services
 ```

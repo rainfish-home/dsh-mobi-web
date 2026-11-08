@@ -1,6 +1,6 @@
 # HANDOFF
 
-State as of the last deploy: **gateway module `gateway34.mjs`**, **page build `v36`**, **25 tests passing**. The bundle is named **`dsh-mobi-web`** (renamed from `dsh-mobile-gateway` — see "Publishing").
+State as of the last deploy: **gateway module `gateway34.mjs`**, **page build `v36`**, **27 tests passing**. The bundle is named **`dsh-mobi-web`** (renamed from `dsh-mobile-gateway` — see "Publishing").
 
 The repo is now packaged as a DSH bundle (`d24d9f8`), but it is **not published and not yet installed that way** on this machine. Its **CLI install path is verified** on a throwaway clean profile (2026-11-08); the desktop plugin-manager path and the migration of this machine are not — see "Publishing" at the bottom.
 
@@ -99,7 +99,7 @@ cordis.patch.yml   the install declaration (an install no longer edits the profi
 lib/index.js       the gateway (assets resolved through PACKAGE_ROOT)
 lib/page.html      the mobile page
 assets/            vendored mermaid (js + gz + br) and the app icon
-test/              25 tests, green from the new layout
+test/              27 tests, green from the new layout
 ```
 
 Three real changes came with the move, not just directory shuffling:
@@ -158,7 +158,29 @@ Not yet observed: the **desktop plugin manager** path (that is step 3, and it mu
 
 **4. The security section is buried.** Holding the token means: send prompts, approve tool calls (shell included), read every session on the machine. That belongs at the top of the README, with "put it behind Tailscale, not a public tunnel" next to it.
 
-**5. The minted token is never logged.** The README says the token is "printed in the startup log"; it is not. `resolveToken()` mints silently and `apply()` only reports `listening on … (token required)` plus `log in with the configured token` (lib/index.js `resolveToken`, and the `say('info', …)` pair at the listen callback). Worse, `say()` prefers `ctx.logger`, so in a CLI boot *no* `[dsh-mobi-web]` line reaches stdout at all — the test instance printed only `dsh web: …`. A fresh installer therefore has to know to `cat $DSH_HOME/dsh-mobi-web-token` from the README. Pick one: log the path (safe) or the token itself (convenient, but a secret in a log file), and make `say()` fall back to stdout when the logger is silent. Either way the README sentence needs to match reality.
+**5. ~~The minted token is never logged~~ — fixed.** Three things were wrong at once:
+
+- `resolveToken()` minted silently, so nothing said a token existed or where it went.
+- `say()` preferred `ctx.logger`, and **cordis always provides `ctx.logger`** — the `else console.log(...)` branch was dead code in every real boot. Worse, cordis' `LoggerService` only appends to an in-memory ring buffer and registers no stdout exporter, so those lines were invisible everywhere (the desktop app writes nothing to `~/Library/Logs` but crash files).
+- The listen callback's wording ("log in with the configured token") named a secret it never showed.
+
+Now: `resolveToken()` returns `{ token, source: 'config'|'env'|'file'|'minted'|'disabled', file, saved }`; `say()` prints every line to stdout *and* mirrors it into `ctx.logger` inside a try/catch (a throwing logger must not kill the host); and the listen callback says `minted … saved to <path> (0600)` + `read it with: cat <path>`, or `token read from <path>` on later boots. **The token itself stays out of the log** — it is one shared secret that grants the whole machine, and it is already in a 0600 file. The single exception is the unwritable-`$DSH_HOME` case (`saved: false`), where the process holds the only copy and echoing it is the only way to keep it usable. Printing the token unconditionally is a one-line change if that trade is ever preferred.
+
+Two tests in `test/token.test.mjs` cover the mint → reuse → configured → disabled matrix, the 0600 mode, and the unwritable-home branch (27 tests total).
+
+Re-verified on the throwaway isolated profile, first boot vs. second boot:
+
+```
+[dsh-mobi-web] listening on 127.0.0.1:3183 → 127.0.0.1:3900 (token required)
+[dsh-mobi-web] no token was configured, so one was minted and saved to …/dsh-mobi-web-token (mode 0600)
+[dsh-mobi-web] read it with: cat …/dsh-mobi-web-token
+[dsh-mobi-web] open http://127.0.0.1:3183/m/ on the phone through your tunnel
+…
+[dsh-mobi-web] listening on 127.0.0.1:3183 → 127.0.0.1:3900 (token required)
+[dsh-mobi-web] token read from …/dsh-mobi-web-token
+```
+
+Login still worked after the restart (302 → `/m/` 200), so the file — not the process — is the source of truth.
 
 ### Still missing for a release
 
