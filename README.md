@@ -8,6 +8,18 @@ A phone-first web client for **DeepSeek Harness**, served by a sidecar gateway t
 phone browser  ──HTTPS──▶  Cloudflare tunnel / Tailscale  ──▶  127.0.0.1:3083 (this plugin)  ──▶  harness host services
 ```
 
+## Read this first: what you are exposing
+
+Holding the login token means **operating this machine through the harness**. The gateway proxies the whole harness, not just chat:
+
+- send prompts, and read every session on the machine (history included)
+- approve tool calls — **including shell commands** — and answer "yes" on your behalf
+- with approvals, run anything the harness itself could run
+
+So: **put it behind Tailscale** (a private tailnet) rather than a public tunnel unless you know what you are doing, use a token you generated for this and nothing else, and never reuse a password from another service. The token is stored in `$DSH_HOME/dsh-mobi-web-token` (mode 0600) and the log prints only its *path*.
+
+![The session list on a phone](docs/screenshot-sessions.png)
+
 ## Why this exists
 
 The official web UI ships ~4.6 MB of JavaScript. Over a relayed mobile link (0.4 MB/s in practice) that is ten-plus seconds of white screen, and the layout assumes a trackpad. This gateway serves a **~32 KB** page instead and talks to the same host services in-process, so it can do things a proxied UI cannot — like holding an approval the desktop never sees.
@@ -38,19 +50,28 @@ The official web UI ships ~4.6 MB of JavaScript. Over a relayed mobile link (0.4
 
 **Stay up**
 - SSE with exponential-backoff reconnect (2 s → 30 s) and a 6 s poll as fallback
-- A launchd guard restores the plugin's `cordis.patch.yml` row if the app rewrites that file
+- The gateway lives inside the harness process, so it starts and stops with it — no separate daemon to supervise
 
 ## Install
 
-```bash
-# from npm
-dsh plugin --profile desktop add dsh-mobi-web
+The plugin is a DSH **bundle**: it ships its own `cordis.patch.yml`, so no profile file is edited by hand. There are two install paths, because the desktop profile is special.
 
-# or a local checkout
-dsh plugin --profile desktop add link:/path/to/dsh-mobi-web-plugin
+**Web / other profiles** — the npm CLI:
+
+```bash
+dsh plugin --profile web add dsh-mobi-web     # from npm
+dsh plugin --profile web add link:/path/to/dsh-mobi-web-plugin   # from a checkout
 ```
 
-The bundle ships its own `cordis.patch.yml`, so nothing in your profile is edited by hand. Then expose the port:
+**The desktop profile** — `desktop` is reserved for the Electron-owned profile, and the *npm* CLI refuses to manage it. Install through the app's **plugin manager**, or with the Desktop-installed command (`dsh` inside the app bundle):
+
+```bash
+dsh plugin --profile desktop add dsh-mobi-web
+```
+
+Either way, after `add` the package is in `package.json` → `dsh.profile.bundles` (the CLI reconciles that list by inspecting each dependency's `dsh.bundle` declaration). **A new bundle only mounts on restart** — adding it changes nothing until the app or `dsh` starts again.
+
+Then expose the port:
 
 ```bash
 tailscale serve --bg 3083          # phone on the same tailnet
@@ -61,15 +82,23 @@ Open `https://<your-host>/m/`.
 
 **The password.** If you do not set `token` in the patch config, one is minted on first start and written to `$DSH_HOME/dsh-mobi-web-token` (mode 0600). The startup log prints *where* it is, not the token itself — `cat` that file to read it. (The token is echoed only when the file could not be written, i.e. when that process holds the only copy.) Set `token: '…'` to choose your own, or `token: false` to disable the gate — only on a network you fully trust.
 
-> **Read this before exposing it.** The gateway proxies the *whole* harness, not just chat: whoever holds the token can send prompts, approve tool calls (including shell commands) and read every session on that machine. Put it behind Tailscale (private) rather than a public tunnel unless you know what you are doing, and never reuse a token from anywhere else.
+To override anything, add a row to your profile's `cordis.patch.yml`. A patch **replaces the row's whole `config` object**, so restate every non-default value:
+
+```yaml
+- id: dsh-mobi-web
+  config:
+    listenHost: '127.0.0.1'
+    listenPort: 3083
+    blockPaths: ['/dsh-whale/']
+```
 
 ## Configuration
 
 | key | default | meaning |
 | --- | --- | --- |
 | `listenHost` | `127.0.0.1` | never bind wider; a tunnel does the rest |
-| `listenPort` | `3083` | |
-| `token` | auto-minted | password for the cookie gate; `false` disables it |
+| `listenPort` | `3083` (bundle patch; the code default is `3080`) | |
+| `token` | auto-minted file | password for the cookie gate; `false` disables it |
 | `allowTokenUrl` | `false` | accept `?t=…` links (leaks via history, off by default) |
 | `blockPaths` | `[]` | path prefixes answered `204` to keep the page light |
 | `approvalPriority` | `'phone-first'` | `'desktop'` disables interception entirely |
@@ -96,7 +125,7 @@ Open `https://<your-host>/m/`.
 - **No `0.0.0.0`.** `dsh` refuses to start on a non-loopback host, so a sidecar proxy is the only option; the tunnel terminates TLS outside.
 - **Cookie minting happens server-side.** Letting the launch-token flow redirect through `303` dropped the `SameSite=Strict` cookie on iOS, producing `ERR_TOO_MANY_REDIRECTS`.
 - **Every request handler is wrapped in try/catch.** dsh treats an uncaught exception as fatal; a sidecar must never crash the host.
-- **Hot reload needs new filenames.** The plugin patch reloads by re-importing, so each deploy uses `gatewayNN.mjs` and a bumped row id. Editing the *same* file only re-applies config, not code.
+- **The profile links the checkout.** Editing `lib/index.js` and restarting is the deploy; `lib/page.html` is read per request, so it needs no restart at all.
 
 ## Limits worth knowing
 
@@ -105,11 +134,12 @@ Open `https://<your-host>/m/`.
 - Images inside *historical* messages render as `[图片]` — only the fact they existed is kept.
 - Mermaid is vendored (857 KB brotli), lazy-loaded on the first diagram.
 - Sessions cannot be moved between workspaces — DSH derives membership from the session's `cwd` at creation.
+- **Compatibility**: verified on DSH `0.2.2-rc.1`. The gateway reads host services through `ctx.get('sessionQuery')` and friends — private API, not a stable contract. A dsh upgrade may break it; the page and the HTTP layer would keep working.
 
 ## Repo layout
 
 ```
-lib/index.js      the gateway plugin (single file on purpose: it is hot-reloaded by filename)
+lib/index.js      the gateway plugin (single file on purpose)
 lib/page.html     the mobile page, served from disk on every request
 assets/           vendored mermaid (js + gz + br) and the app icon
 cordis.patch.yml  bundle patch — the install declaration

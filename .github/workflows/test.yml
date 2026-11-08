@@ -1,0 +1,22 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # engines.dsh says node >= 20; 24 is what this was written on.
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # No dependencies to install: the plugin is node:http/net/fs/crypto only,
+      # and the tests use node:test with fake host services.
+      - run: node --test test/*.test.mjs

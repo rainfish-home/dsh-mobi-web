@@ -151,7 +151,7 @@ Not yet observed: the **desktop plugin manager** path (that is step 3, and it mu
 
 What stays true: **boot and `--dump-config` are still refused for the name `desktop`** — so the composed desktop tree can only be inspected on a renamed copy. That is how the step-3 composition was rehearsed. The README must still document both install paths (npm CLI for web/other profiles, plugin manager or the app's command for desktop).
 
-**4. The security section is buried.** Holding the token means: send prompts, approve tool calls (shell included), read every session on the machine. That belongs at the top of the README, with "put it behind Tailscale, not a public tunnel" next to it.
+**4. ~~The security section is buried~~ — done.** The README now opens with "Read this first: what you are exposing": prompts, approvals (shell included), every session, then the Tailscale advice and where the token lives. The "not that package" note sits above it as a two-line blockquote.
 
 **5. ~~The minted token is never logged~~ — fixed.** Three things were wrong at once:
 
@@ -179,10 +179,11 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
 
 ### Still missing for a release
 
-- Screenshots (the ones in the design notes work).
-- A compatibility line: verified on DSH `0.2.2-rc.1` (installation reports `dsh 0.2.2-rc.1`; the packaging was written against `0.2.1-rc.5`); `ctx.get('sessionQuery')` and friends are private API and can drift.
-- CI running `npm test` on push.
-- An English summary if the audience is not only Chinese-speaking.
+- ~~Screenshots~~ — `docs/screenshot-sessions.png`, rendered from the real page against a fabricated session list (so no real workspace names ship), 390×844 @2x. The fixture script was a throwaway; regenerate by serving `lib/page.html` with a stub `/m/api/sessions`.
+- ~~A compatibility line~~ — in the README under "Limits worth knowing"; DSH `0.2.2-rc.1`, with the private-API caveat.
+- ~~CI~~ — `.github/workflows/test.yml`, `node --test test/*.test.mjs` on Node 20 and 24, push + PR. **Not yet observed running**: it needs a push to GitHub.
+- ~~English summary~~ — the README is English throughout.
+- `npm pack --dry-run`: 12 files, 3.0 MB packed / 5.7 MB unpacked (mermaid is 5.4 MB of it). Publishing needs the npm cache to be writable, which the agent sandbox blocks — do it from a normal terminal or with approval.
 
 ### Order of work
 
@@ -193,8 +194,8 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
    Verified after the restart: `/__gw/health` 200, `/m/` 401 → 200 after a login with the **existing** password, `/m/api/sessions` returns real JSON, both tunnels 200, the login page footer carries the new `dsh-mobi-web` name (so the old module is off the wire), and the guard no longer restores the old row (tested by deleting the override from a copy and watching `guard.py` put it back).
 
    One surprise worth remembering: the app kept serving the *old* module across an earlier `dsh plugin add` — a new bundle only mounts on a restart. The install itself is live-safe; the row is not.
-4. **Finish the docs**: screenshots, security section first, compatibility, both install paths.
-5. **Publish**: `0.1.0` → `npm publish` → GitHub release → CI.
+4. ~~**Finish the docs**~~ — **done**: security first, both install paths (npm CLI for web; plugin manager / Desktop command for `desktop`), compatibility line, screenshot. What is left of this step is *review*, not writing.
+5. **Publish** — the only step left: `0.1.0` → `npm publish` → GitHub release → CI. Needs the npm account and a decision on renaming the GitHub repo (`dsh-mobi-web-plugin` → `dsh-mobi-web`), which would also update the three URLs in `package.json`.
 
 ### Definition of done
 

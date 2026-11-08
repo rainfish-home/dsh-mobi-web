@@ -18,6 +18,7 @@
     "lib",
     "assets",
     "cordis.patch.yml",
+    "docs",
     "README.md",
     "LICENSE"
   ],
