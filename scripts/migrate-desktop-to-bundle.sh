@@ -112,13 +112,19 @@ chmod 600 "$backup/cordis.patch.yml"   # it still contains the password
 say "backup: $backup"
 
 # Quit before editing: the running app still serves 3083 from the old row.
+# The wait is on the listener, not on `pgrep`: a leftover helper process must
+# not make this abort after the app is already gone. Any failure path from here
+# reopens the app, so the machine is never left with it closed.
+gateway_pid() { lsof -nP -iTCP:3083 -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print $2}'; }
+reopen_and_die() { open -a "$APP_NAME" >/dev/null 2>&1 || true; die "$*"; }
+
 osascript -e "quit app \"$APP_NAME\"" >/dev/null 2>&1 ||
   die "could not ask $APP_NAME to quit — quit it by hand, then re-run"
 for _ in $(seq 1 30); do
-  pgrep -f "$APP_NAME" >/dev/null || break
+  [ -z "$(gateway_pid)" ] && break
   sleep 1
 done
-pgrep -f "$APP_NAME" >/dev/null && die "$APP_NAME did not exit; nothing was changed"
+[ -z "$(gateway_pid)" ] || reopen_and_die "$APP_NAME still owns 3083 after 30 s; nothing was changed, the app was reopened"
 
 point_guard_at_new_block
 rewrite_patch "$PATCH"
@@ -126,10 +132,18 @@ say "patched: $PATCH"
 
 open -a "$APP_NAME" || die "could not relaunch $APP_NAME — start it by hand"
 
-for _ in $(seq 1 60); do
+for _ in $(seq 1 90); do
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:3083/__gw/health || true)
   if [ "$code" = '200' ]; then
     say "gateway is up on 127.0.0.1:3083 (health 200)"
+    # The app rewrites cordis.patch.yml from its settings model on some
+    # launches; the guard restores this override, but not instantly.
+    if ! grep -q 'id: dsh-mobi-web' "$PATCH"; then
+      say
+      say "warning: the app dropped the dsh-mobi-web override from $PATCH."
+      say 'The launchd guard restores it within ~5 min; until then the row uses'
+      say 'the bundle defaults (port 3080, no blockPaths).'
+    fi
     say
     say 'Done. The phone has to log in once more: the cookie signature domain'
     say "changed with the rename. The password is unchanged — it is in $TOKEN_FILE"
