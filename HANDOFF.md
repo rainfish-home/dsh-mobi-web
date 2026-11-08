@@ -12,20 +12,21 @@ The page shows its build in the footer (`446ms · v36`). Always read it before d
 | --- | --- |
 | source (this repo) | `~/playground/home-fish/dsh-mobi-web-plugin` (`lib/`, `assets/`) |
 | npm / bundle name | `dsh-mobi-web` (repo dir kept its old name) |
-| deployed module + page | `~/.dsh/profiles/desktop/plugins/mobile-gateway/` |
-| plugin row | `~/.dsh/profiles/desktop/cordis.patch.yml` → `mobile-gateway-v<NN>` |
+| deployed module + page | `~/.dsh/profiles/desktop/plugins/mobile-gateway/` (old install, retired by step 3) |
+| plugin row | `~/.dsh/profiles/desktop/cordis.patch.yml` → `mobile-gateway-v<NN>` (old) / `dsh-mobi-web` (bundle override, after the flip) |
 | patch guard | `~/.dsh/profiles/desktop/patch-guard/{guard.py,blocks/mobile-gateway.yml}` |
 | guard LaunchAgent | `~/Library/LaunchAgents/com.dsh.patch-guard.plist` |
+| login token | `$DSH_HOME/dsh-mobi-web-token` (mode 0600) |
 | gateway listens on | `127.0.0.1:3083` |
 | public entrances | `https://dsh.hi5lingo.com/m/` (Cloudflare), `https://yuhuamacbook-pro.tailefe9a0.ts.net/m/` (Tailscale) |
 
-The login token lives in the patch row's `token:` field — do not paste it into docs or commits. (With no token configured the plugin mints one into `$DSH_HOME/dsh-mobi-web-token`.)
+The login token lives in `$DSH_HOME/dsh-mobi-web-token` (0600) — do not paste it into docs or commits. Until the step-3 flip it is *also* still in the old patch row's `token:` field and in the `cordis.patch.yml.bak*` / `.before-guard.*` copies the app and the guard left behind.
 
-## The local install is still the hand-rolled one
+## The local install is half-migrated
 
-This repo is packaged as a DSH bundle (`dsh.bundle.patch`), but *this machine* still runs the old setup: a copied `gateway34.mjs` in the profile plus a hand-written patch row, kept alive by the launchd guard.
+The bundle is **installed** into the desktop profile: `package.json` lists `dsh-mobi-web` in both `dependencies` and `dsh.profile.bundles`, and the token now lives in the 0600 file. What is **not** done is the flip: the app still runs the old copied `gateway34.mjs` row, so nothing changed on the wire yet.
 
-Migrating is a one-liner — `dsh plugin --profile desktop add link:~/playground/home-fish/dsh-mobi-web-plugin` — and it deletes the whole copy/bump-id/refresh-snapshot ritual, because bundle patches are composed by the app instead of being rewritten by it. It has **not** been done or tested yet: the migration restarts the gateway, so do it when you can watch the app, and keep the guard installed until the bundle install is proven.
+`scripts/migrate-desktop-to-bundle.sh` finishes it — quit app → replace the old row with the `dsh-mobi-web` config override → repoint the guard block → relaunch → wait for `3083/__gw/health`. `--dry-run` prints the diff. It has to quit the app, so it cannot be run from inside the app's own session; that is the only reason it is a script and not a command in this conversation.
 
 ## Deploy recipe
 
@@ -154,7 +155,9 @@ dsh --profile bundlecheck --dump-config
 
 Not yet observed: the **desktop plugin manager** path (that is step 3, and it mutates this machine). Also unverified: an install from the *registry* rather than `link:` — pnpm resolves `link:` locally, so tarball/first-publish behaviour is still inferred.
 
-**3. The desktop client cannot install via the CLI.** Install with `dsh plugin --profile web add <pkg>` works for the web profile, but `--profile desktop` is rejected (it errored out when tried). Desktop users have to install through the app's own plugin manager. The README must document both paths separately.
+**3. ~~The desktop client cannot install via the CLI~~ — half wrong, now measured.** The doc ships two commands: the **npm CLI** rejects `desktop` ("the `desktop` name is reserved for the Electron-owned profile, so the CLI rejects boot and config-dump requests for it. The npm CLI also rejects its plugin-management requests"), while the **Desktop-installed command** may manage the initialized desktop profile. This machine's `~/.local/bin/dsh` *is* the Desktop-installed one (symlink into the app's `runtime/cli/bin/dsh`), and `dsh plugin --profile desktop add link:<repo>` worked: pnpm added the link and `dsh.profile.bundles` gained `dsh-mobi-web`. A no-op probe (`add --help`) first confirmed reconcile would not rewrite the manifest (sha unchanged).
+
+What stays true: **boot and `--dump-config` are still refused for the name `desktop`** — so the composed desktop tree can only be inspected on a renamed copy. That is how the step-3 composition was rehearsed. The README must still document both install paths (npm CLI for web/other profiles, plugin manager or the app's command for desktop).
 
 **4. The security section is buried.** Holding the token means: send prompts, approve tool calls (shell included), read every session on the machine. That belongs at the top of the README, with "put it behind Tailscale, not a public tunnel" next to it.
 
@@ -193,7 +196,9 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
 
 1. ~~**Rename** to `dsh-mobi-web`~~ — **done** (package, `cordis.patch.yml` id/name, exported name, token filename, both docs). Remaining sub-item: the GitHub repo is still `dsh-mobi-web-plugin`.
 2. ~~**Verify the bundle install on a clean profile**~~ — **done for the CLI path** (recipe and evidence under blocker 2). The desktop-plugin-manager half moves with step 3.
-3. **Migrate this machine** to the bundle install — `dsh plugin add link:…` **or** the in-app manager. This restarts the gateway, so do it while watching the app; keep the guard until the bundle install is proven. After that the whole copy/bump-id/refresh-snapshot ritual disappears.
+3. **Migrate this machine** — **installed, flip pending.** Done: the bundle is in the desktop profile's `dependencies` + `dsh.profile.bundles`, and the token moved to `$DSH_HOME/dsh-mobi-web-token` (0600) so it stops living in the YAML the app rewrites (the guard copies that file into `.before-guard.*` backups). Rehearsed on a renamed copy: the override composes to `listenHost 127.0.0.1 / listenPort 3083 / blockPaths ['/dsh-whale/']` and the old `mobile-gateway` row disappears from the dump.
+
+   Remaining, and only a human can do it: quit the app, swap the row, relaunch. `scripts/migrate-desktop-to-bundle.sh` does all three (and repoints the guard block first, so the guard cannot resurrect the old row it would otherwise restore). Run `--dry-run` first; the script prints the diff. Expected after the flip: one fresh login on the phone, because the cookie signature domain changed with the rename. The old `plugins/mobile-gateway/` copies and the guard can only be deleted once the bundle install is proven from a real restart.
 4. **Finish the docs**: screenshots, security section first, compatibility, both install paths.
 5. **Publish**: `0.1.0` → `npm publish` → GitHub release → CI.
 
