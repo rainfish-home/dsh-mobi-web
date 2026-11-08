@@ -195,7 +195,19 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
 
    One surprise worth remembering: the app kept serving the *old* module across an earlier `dsh plugin add` — a new bundle only mounts on a restart. The install itself is live-safe; the row is not.
 4. ~~**Finish the docs**~~ — **done**: security first, both install paths (npm CLI for web; plugin manager / Desktop command for `desktop`), compatibility line, screenshot. What is left of this step is *review*, not writing.
-5. **Publish** — the only step left: `0.1.0` → `npm publish` → GitHub release → CI. Needs the npm account and a decision on renaming the GitHub repo (`dsh-mobi-web-plugin` → `dsh-mobi-web`), which would also update the three URLs in `package.json`.
+5. **Publish** — the only step left. Repo is renamed to `dsh-mobi-web`, URLs updated, CI green; what is missing is an npm account with 2FA.
+
+   Publish runbook:
+
+   ```bash
+   npm whoami                              # must print the account
+   npm view dsh-mobi-web version           # must still be 404
+   npm publish                             # 12 files, 3.0 MB
+   git tag v0.1.0 && git push origin v0.1.0
+   gh release create v0.1.0 --title v0.1.0 --notes-file /tmp/notes.md
+   ```
+
+   Two traps: the agent sandbox cannot write `~/.npm`, so `npm publish` has to run from a normal terminal (or with full-disk approval); and the local `link:` installs prove nothing about the tarball — after publishing, install **from the registry** on a throwaway profile (the step-2 recipe) and re-run the health/login checks. That last check is the real definition of done: the `files` whitelist, not the checkout, decides what ships.
 
 ### Definition of done
 

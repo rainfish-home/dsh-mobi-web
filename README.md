@@ -1,5 +1,7 @@
 # dsh-mobi-web
 
+[![test](https://github.com/rainfish-home/dsh-mobi-web/actions/workflows/test.yml/badge.svg)](https://github.com/rainfish-home/dsh-mobi-web/actions/workflows/test.yml)
+
 A phone-first web client for **DeepSeek Harness**, served by a sidecar gateway that runs *inside* the harness process.
 
 > **Not `dsh-mobile-gateway`.** There is an unrelated npm package by that name ("scan a QR code + settings page + live sync"). This one is different: a **32 KB page** instead of a proxied UI, **approvals that stay on the phone when the phone started the turn**, and Mermaid rendered on the device. Package and repo are both `dsh-mobi-web`; the local checkout directory is still named `dsh-mobi-web-plugin`.
