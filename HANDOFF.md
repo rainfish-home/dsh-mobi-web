@@ -179,7 +179,8 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
 
 ### Still missing for a release
 
-- ~~Screenshots~~ — `docs/screenshot-sessions.png`, rendered from the real page against a fabricated session list (so no real workspace names ship), 390×844 @2x. The fixture script was a throwaway; regenerate by serving `lib/page.html` with a stub `/m/api/sessions`.
+- ~~Screenshots~~ — two, `docs/screenshot-{sessions,conversation}.png`, rendered from the real page against fabricated data (390×844 @2x): the list, and a conversation with Markdown + Mermaid + a pending approval card. The fixture script was a throwaway; regenerate by serving `lib/page.html` with stub `/m/api/{sessions,session}` plus `/m/assets/mermaid.js`.
+  Rendering the second one exposed a real layout bug: at 390 px a long approval command squeezed 等待批准 into a vertical stack and wrapped 允许一次. `.waiting` now keeps every part on one line (label/chip/buttons `nowrap`, tool chip `flex:none`, reason ellipsised).
 - ~~A compatibility line~~ — in the README under "Limits worth knowing"; DSH `0.2.2-rc.1`, with the private-API caveat.
 - ~~CI~~ — `.github/workflows/test.yml`, `node --test test/*.test.mjs` on Node 20 and 24, push + PR. **Green on the first run** (42494632153): both jobs success, so the Node 20 floor holds too.
 - ~~English summary~~ — the README is English throughout.

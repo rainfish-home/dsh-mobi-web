@@ -20,7 +20,18 @@ Holding the login token means **operating this machine through the harness**. Th
 
 So: **put it behind Tailscale** (a private tailnet) rather than a public tunnel unless you know what you are doing, use a token you generated for this and nothing else, and never reuse a password from another service. The token is stored in `$DSH_HOME/dsh-mobi-web-token` (mode 0600) and the log prints only its *path*.
 
+## What it looks like
+
 ![The session list on a phone](docs/screenshot-sessions.png)
+
+Sessions grouped by workspace, the running one marked, anything older than 24 h
+folded away, archived ones hidden.
+
+![A conversation with a Mermaid diagram and a pending approval](docs/screenshot-conversation.png)
+
+A conversation: Markdown, a Mermaid diagram rendered on the device, and an
+approval card waiting at the bottom — the one the desktop never sees, because
+the phone started this turn.
 
 ## Why this exists
 
