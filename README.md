@@ -1,6 +1,8 @@
-# dsh-mobi-web-plugin
+# dsh-mobi-web
 
 A phone-first web client for **DeepSeek Harness**, served by a sidecar gateway that runs *inside* the harness process.
+
+> **Not `dsh-mobile-gateway`.** There is an unrelated npm package by that name ("scan a QR code + settings page + live sync"). This one is different: a **32 KB page** instead of a proxied UI, **approvals that stay on the phone when the phone started the turn**, and Mermaid rendered on the device. The repo directory is still `dsh-mobi-web-plugin`; the package is `dsh-mobi-web`.
 
 ```
 phone browser  ──HTTPS──▶  Cloudflare tunnel / Tailscale  ──▶  127.0.0.1:3083 (this plugin)  ──▶  harness host services
@@ -42,7 +44,7 @@ The official web UI ships ~4.6 MB of JavaScript. Over a relayed mobile link (0.4
 
 ```bash
 # from npm
-dsh plugin --profile desktop add dsh-mobile-gateway
+dsh plugin --profile desktop add dsh-mobi-web
 
 # or a local checkout
 dsh plugin --profile desktop add link:/path/to/dsh-mobi-web-plugin
@@ -57,7 +59,7 @@ tailscale serve --bg 3083          # phone on the same tailnet
 
 Open `https://<your-host>/m/`.
 
-**The password.** If you do not set `token` in the patch config, one is minted on first start, written to `$DSH_HOME/mobile-gateway-token` (mode 0600) and printed in the startup log. Set `token: '…'` to choose your own, or `token: false` to disable the gate — only on a network you fully trust.
+**The password.** If you do not set `token` in the patch config, one is minted on first start, written to `$DSH_HOME/dsh-mobi-web-token` (mode 0600) and printed in the startup log. Set `token: '…'` to choose your own, or `token: false` to disable the gate — only on a network you fully trust.
 
 > **Read this before exposing it.** The gateway proxies the *whole* harness, not just chat: whoever holds the token can send prompts, approve tool calls (including shell commands) and read every session on that machine. Put it behind Tailscale (private) rather than a public tunnel unless you know what you are doing, and never reuse a token from anywhere else.
 

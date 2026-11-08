@@ -1,6 +1,6 @@
 # HANDOFF
 
-State as of the last deploy: **gateway module `gateway34.mjs`**, **page build `v36`**, **25 tests passing**.
+State as of the last deploy: **gateway module `gateway34.mjs`**, **page build `v36`**, **25 tests passing**. The bundle is named **`dsh-mobi-web`** (renamed from `dsh-mobile-gateway` — see "Publishing").
 
 The repo is now packaged as a DSH bundle (`d24d9f8`), but it is **not published and not yet installed that way** — see "Publishing" at the bottom.
 
@@ -11,6 +11,7 @@ The page shows its build in the footer (`446ms · v36`). Always read it before d
 | what | path |
 | --- | --- |
 | source (this repo) | `~/playground/home-fish/dsh-mobi-web-plugin` (`lib/`, `assets/`) |
+| npm / bundle name | `dsh-mobi-web` (repo dir kept its old name) |
 | deployed module + page | `~/.dsh/profiles/desktop/plugins/mobile-gateway/` |
 | plugin row | `~/.dsh/profiles/desktop/cordis.patch.yml` → `mobile-gateway-v<NN>` |
 | patch guard | `~/.dsh/profiles/desktop/patch-guard/{guard.py,blocks/mobile-gateway.yml}` |
@@ -18,7 +19,7 @@ The page shows its build in the footer (`446ms · v36`). Always read it before d
 | gateway listens on | `127.0.0.1:3083` |
 | public entrances | `https://dsh.hi5lingo.com/m/` (Cloudflare), `https://yuhuamacbook-pro.tailefe9a0.ts.net/m/` (Tailscale) |
 
-The login token lives in the patch row's `token:` field — do not paste it into docs or commits. (With no token configured the plugin mints one into `$DSH_HOME/mobile-gateway-token`.)
+The login token lives in the patch row's `token:` field — do not paste it into docs or commits. (With no token configured the plugin mints one into `$DSH_HOME/dsh-mobi-web-token`.)
 
 ## The local install is still the hand-rolled one
 
@@ -104,28 +105,30 @@ test/              25 tests, green from the new layout
 Three real changes came with the move, not just directory shuffling:
 
 - **package-relative assets** — `new URL('./asset/…', import.meta.url)` breaks once the plugin lives in `node_modules`; the page and mermaid now resolve via `PACKAGE_ROOT`.
-- **token bootstrap** — with no token configured the plugin mints one into `$DSH_HOME/mobile-gateway-token` (0600) and logs it. Without this, a fresh install would be an **open proxy** to the whole harness.
+- **token bootstrap** — with no token configured the plugin mints one into `$DSH_HOME/dsh-mobi-web-token` (0600) and logs it. Without this, a fresh install would be an **open proxy** to the whole harness.
 - **default export** — `export default { name, inject, apply }` alongside the named exports, matching cordis conventions.
 
-### Four blockers before publishing
+### Blockers before publishing
 
-**1. The npm name is taken.** `dsh-mobile-gateway` belongs to someone else, in the same niche, updated two days before this writing:
+**1. ~~The npm name is taken~~ — done: renamed to `dsh-mobi-web`.** `dsh-mobile-gateway` belongs to someone else, in the same niche:
 
 ```
 dsh-mobile-gateway  0.2.1  bitxeno/dsh-mobile-gateway
 "手机访问网关：局域网扫码 + 公网隧道，把电脑上的 DSH 实时同步到手机（含设置页）"
 ```
 
-Availability checked on the same date:
+Availability checked at the time (re-check before publishing — npm names are global):
 
 | candidate | npm |
 | --- | --- |
-| `dsh-mobi-web` | free — matches the repo name |
+| `dsh-mobi-web` | free — **chosen** |
 | `dsh-phone-web` | free |
 | `dsh-mobile-client` | free |
 | `dsh-mobile-web` | taken (0.1.7) |
 
-Differentiation worth stating in the README: that package is "scan a QR code + a settings page + live sync"; this one is a **32 KB phone-first page**, **approvals that stay on the phone when the phone started the turn**, and Mermaid rendering. Without that sentence it reads like a duplicate.
+Renamed in `package.json`, `cordis.patch.yml` (`id`/`name`), the exported `name`, the HMAC cookie domain separator, log/error prefixes, and the minted-token filename (`$DSH_HOME/dsh-mobi-web-token`); README and this file updated. The GitHub repo is still `dsh-mobi-web-plugin`, so the `repository`/`homepage` URLs in `package.json` are unchanged on purpose — rename the repo (or update the URLs) before publishing.
+
+The README now opens with the differentiation: the other package is "scan a QR code + a settings page + live sync"; this one is a **32 KB phone-first page**, **approvals that stay on the phone when the phone started the turn**, and Mermaid rendering. Without that sentence it reads like a duplicate.
 
 **2. The bundle install path has never been exercised.** This machine still runs the hand-rolled install (copied `gateway34.mjs` + hand-written patch row + the launchd guard). `dsh plugin add …` and the in-app plugin manager have not been tried against a clean profile. Everything in the README about installing is currently *inferred from the reference bundle*, not observed.
 
@@ -142,7 +145,7 @@ Differentiation worth stating in the README: that package is "scan a QR code + a
 
 ### Order of work
 
-1. **Rename** to `dsh-mobi-web` (or another free name); update `package.json`, `cordis.patch.yml` (`id`/`name`), and both docs.
+1. ~~**Rename** to `dsh-mobi-web`~~ — **done** (package, `cordis.patch.yml` id/name, exported name, token filename, both docs). Remaining sub-item: the GitHub repo is still `dsh-mobi-web-plugin`.
 2. **Verify the bundle install on a clean profile**: copy the profile, `dsh plugin --profile <copy> add link:<repo>`, start it, confirm the gateway row appears and `/m/` answers. Then repeat through the desktop plugin manager.
 3. **Migrate this machine** to the bundle install — `dsh plugin add link:…` **or** the in-app manager. This restarts the gateway, so do it while watching the app; keep the guard until the bundle install is proven. After that the whole copy/bump-id/refresh-snapshot ritual disappears.
 4. **Finish the docs**: screenshots, security section first, compatibility, both install paths.
