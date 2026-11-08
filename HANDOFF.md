@@ -1,8 +1,8 @@
 # HANDOFF
 
-State as of the last deploy: **gateway module `gateway34.mjs`**, **page build `v36`**, **27 tests passing**. The bundle is named **`dsh-mobi-web`** (renamed from `dsh-mobile-gateway` — see "Publishing").
+State as of 2026-11-08: **this machine runs the bundle**, `lib/index.js` + `lib/page.html` served straight from this checkout, **27 tests passing**. The bundle is named **`dsh-mobi-web`** (renamed from `dsh-mobile-gateway` — see "Publishing"). It is still **not published**, and the desktop install is a `link:` to this directory.
 
-The repo is now packaged as a DSH bundle (`d24d9f8`), but it is **not published and not yet installed that way** on this machine. Its **CLI install path is verified** on a throwaway clean profile (2026-11-08); the desktop plugin-manager path and the migration of this machine are not — see "Publishing" at the bottom.
+The bundle install path is verified twice: on a throwaway clean profile (step 2) and on the real desktop profile (step 3, `scripts/migrate-desktop-to-bundle.sh`). What the flip proved: the row composes as `127.0.0.1:3083`, `GET /__gw/health` 200, `/m/` 401 → 200 after a login with the existing password, `/m/api/sessions` returns real JSON, and both tunnels answer 200.
 
 The page shows its build in the footer (`446ms · v36`). Always read it before debugging a "it's broken on my phone" report — a stale build means a caching problem, not a code problem.
 
@@ -10,46 +10,38 @@ The page shows its build in the footer (`446ms · v36`). Always read it before d
 
 | what | path |
 | --- | --- |
-| source (this repo) | `~/playground/home-fish/dsh-mobi-web-plugin` (`lib/`, `assets/`) |
+| source (this repo) | `~/playground/home-fish/dsh-mobi-web-plugin` (`lib/`, `assets/`) — **this is what the app loads** |
 | npm / bundle name | `dsh-mobi-web` (repo dir kept its old name) |
-| deployed module + page | `~/.dsh/profiles/desktop/plugins/mobile-gateway/` (old install, retired by step 3) |
-| plugin row | `~/.dsh/profiles/desktop/cordis.patch.yml` → `mobile-gateway-v<NN>` (old) / `dsh-mobi-web` (bundle override, after the flip) |
-| patch guard | `~/.dsh/profiles/desktop/patch-guard/{guard.py,blocks/mobile-gateway.yml}` |
+| how the profile gets it | `~/.dsh/profiles/desktop/node_modules/dsh-mobi-web` → symlink to this checkout, listed in `package.json` `dependencies` **and** `dsh.profile.bundles` |
+| config override | `~/.dsh/profiles/desktop/cordis.patch.yml` → `- id: dsh-mobi-web` (port 3083 + `blockPaths`) |
+| patch guard | `~/.dsh/profiles/desktop/patch-guard/{guard.py,blocks/dsh-mobi-web.yml}` |
 | guard LaunchAgent | `~/Library/LaunchAgents/com.dsh.patch-guard.plist` |
 | login token | `$DSH_HOME/dsh-mobi-web-token` (mode 0600) |
 | gateway listens on | `127.0.0.1:3083` |
 | public entrances | `https://dsh.hi5lingo.com/m/` (Cloudflare), `https://yuhuamacbook-pro.tailefe9a0.ts.net/m/` (Tailscale) |
+| rollback | `~/.dsh/profiles/desktop/.bundle-migration-20261108-231454/` (old row, guard block, `old-plugin/{gateway34.mjs,mobile.html}`) |
 
-The login token lives in `$DSH_HOME/dsh-mobi-web-token` (0600) — do not paste it into docs or commits. Until the step-3 flip it is *also* still in the old patch row's `token:` field and in the `cordis.patch.yml.bak*` / `.before-guard.*` copies the app and the guard left behind.
+The login token lives in `$DSH_HOME/dsh-mobi-web-token` (0600) — do not paste it into docs or commits. Older copies still exist in `cordis.patch.yml.bak*`, `.before-guard.*` and the migration backup; they predate the move and can be deleted.
 
-## The local install is half-migrated
-
-The bundle is **installed** into the desktop profile: `package.json` lists `dsh-mobi-web` in both `dependencies` and `dsh.profile.bundles`, and the token now lives in the 0600 file. What is **not** done is the flip: the app still runs the old copied `gateway34.mjs` row, so nothing changed on the wire yet.
-
-`scripts/migrate-desktop-to-bundle.sh` finishes it — quit app → replace the old row with the `dsh-mobi-web` config override → repoint the guard block → relaunch → wait for `3083/__gw/health`. `--dry-run` prints the diff. It has to quit the app, so it cannot be run from inside the app's own session; that is the only reason it is a script and not a command in this conversation.
+**Known wart:** the patch-guard agent is still loaded, now protecting only the 5-line config override. It is the last piece of the old installation; retire it once the app has gone a few restarts without dropping the override.
 
 ## Deploy recipe
 
-Changing **only `mobile.html`** needs no restart: the file is read per request (`cache-control: no-store`).
+The ritual is gone — the profile links this directory, and bundle patches are composed by the app.
 
-Changing **`index.mjs`** needs all three steps:
+- **`lib/page.html` only** — nothing to do. Read per request (`cache-control: no-store`).
+- **`lib/index.js` (or `cordis.patch.yml` in this repo)** — restart the app (or reload the plugin from the plugin manager). No copy, no bumped filename, no guard snapshot refresh: `dsh plugin add` deleted all of that.
+- **`package.json`** — rare; after changing the bundle declaration, re-run `dsh plugin --profile desktop add link:<this repo>` so `dsh.profile.bundles` is reconciled.
+
+Verify after any of those:
 
 ```bash
-P=~/.dsh/profiles/desktop
-cp index.mjs "$P/plugins/mobile-gateway/gateway<N+1>.mjs"     # new name: the patch reload re-imports
-cp mobile.html "$P/plugins/mobile-gateway/mobile.html"
-# bump the row id AND the name in cordis.patch.yml, then:
-python3 - <<'PY'   # refresh the guard snapshot, or the guard restores the previous version
-import pathlib, os
-p = pathlib.Path(os.path.expanduser('~/.dsh/profiles/desktop/cordis.patch.yml'))
-s = p.read_text(); start = s.index('# ---- mobile gateway (self-hosted)')
-pathlib.Path(os.path.expanduser('~/.dsh/profiles/desktop/patch-guard/blocks/mobile-gateway.yml')).write_text(
-    '# guard-id: mobile-gateway\n' + s[start:].rstrip('\n') + '\n')
-PY
-sleep 7 && curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3083/__gw/health
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3083/__gw/health        # 200
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3083/m/                 # 401 without cookie
 ```
 
-Editing the *same* module filename only re-applies config — the code stays cached. That has cost hours before.
+If the gateway answers on **3080** instead of 3083, the app dropped the override row: the guard restores it within ~5 min, or restart the app.
+
 
 ## Landmines
 
@@ -82,11 +74,11 @@ From the last full review, in priority order:
 
 1. **No tests for approvals or SSE.** The two subtlest paths. They live inside `apply()` and are unreachable without cordis — extract an `createApprovalBroker({ … })` and test the origin/timeout matrix.
 2. **Host memory**: the brotli cache stores `{compressed, raw}` where `raw` is only used for a length header — up to ~54 MB resident. Store the length instead.
-3. **33 historical `gateway*.mjs` copies** in the profile plugin dir (1.4 MB). Only the referenced one is live.
+3. ~~33 historical `gateway*.mjs` copies~~ — **done 2026-11-08**: the whole `plugins/mobile-gateway/` dir (41 files, 6.7 MB) is deleted; the two live files are kept in the migration backup for rollback.
 4. **`seenSessions` / `phoneTurns` never shrink.** Prune on `turn/end`.
 5. **No session search** on the list, and **no unread marker** — you cannot see which session changed while you were away.
 6. **Images in history render as `[图片]`** — fetching the attachment would need a new route.
-7. **A `deploy.sh`** would remove the three-step ritual above, including the easy-to-forget guard refresh.
+7. ~~**A `deploy.sh`** would remove the three-step ritual~~ — **obsolete**: there is no ritual left. The profile links this checkout, so a restart is the deploy. `scripts/migrate-desktop-to-bundle.sh` is the one-off that removed the old install.
 
 ## Publishing — pick this up in a new session
 
@@ -106,7 +98,7 @@ test/              27 tests, green from the new layout
 Three real changes came with the move, not just directory shuffling:
 
 - **package-relative assets** — `new URL('./asset/…', import.meta.url)` breaks once the plugin lives in `node_modules`; the page and mermaid now resolve via `PACKAGE_ROOT`.
-- **token bootstrap** — with no token configured the plugin mints one into `$DSH_HOME/dsh-mobi-web-token` (0600) and logs it. Without this, a fresh install would be an **open proxy** to the whole harness.
+- **token bootstrap** — with no token configured the plugin mints one into `$DSH_HOME/dsh-mobi-web-token` (0600) and logs *where it is* (the token itself stays out of the log). Without this, a fresh install would be an **open proxy** to the whole harness.
 - **default export** — `export default { name, inject, apply }` alongside the named exports, matching cordis conventions.
 
 ### Blockers before publishing
@@ -196,18 +188,20 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
 
 1. ~~**Rename** to `dsh-mobi-web`~~ — **done** (package, `cordis.patch.yml` id/name, exported name, token filename, both docs). Remaining sub-item: the GitHub repo is still `dsh-mobi-web-plugin`.
 2. ~~**Verify the bundle install on a clean profile**~~ — **done for the CLI path** (recipe and evidence under blocker 2). The desktop-plugin-manager half moves with step 3.
-3. **Migrate this machine** — **installed, flip pending.** Done: the bundle is in the desktop profile's `dependencies` + `dsh.profile.bundles`, and the token moved to `$DSH_HOME/dsh-mobi-web-token` (0600) so it stops living in the YAML the app rewrites (the guard copies that file into `.before-guard.*` backups). Rehearsed on a renamed copy: the override composes to `listenHost 127.0.0.1 / listenPort 3083 / blockPaths ['/dsh-whale/']` and the old `mobile-gateway` row disappears from the dump.
+3. ~~**Migrate this machine**~~ — **done 2026-11-08** with `scripts/migrate-desktop-to-bundle.sh`. The bundle is in the desktop profile's `dependencies` + `dsh.profile.bundles`, the token lives in `$DSH_HOME/dsh-mobi-web-token` (0600), and the old row is replaced by a 5-line config override.
 
-   Remaining, and only a human can do it: quit the app, swap the row, relaunch. `scripts/migrate-desktop-to-bundle.sh` does all three (and repoints the guard block first, so the guard cannot resurrect the old row it would otherwise restore). Run `--dry-run` first; the script prints the diff. Expected after the flip: one fresh login on the phone, because the cookie signature domain changed with the rename. The old `plugins/mobile-gateway/` copies and the guard can only be deleted once the bundle install is proven from a real restart.
+   Verified after the restart: `/__gw/health` 200, `/m/` 401 → 200 after a login with the **existing** password, `/m/api/sessions` returns real JSON, both tunnels 200, the login page footer carries the new `dsh-mobi-web` name (so the old module is off the wire), and the guard no longer restores the old row (tested by deleting the override from a copy and watching `guard.py` put it back).
+
+   One surprise worth remembering: the app kept serving the *old* module across an earlier `dsh plugin add` — a new bundle only mounts on a restart. The install itself is live-safe; the row is not.
 4. **Finish the docs**: screenshots, security section first, compatibility, both install paths.
 5. **Publish**: `0.1.0` → `npm publish` → GitHub release → CI.
 
 ### Definition of done
 
-- A clean profile installs the bundle with one documented action and serves `/m/` with a minted token.
-- `npm test` green on CI.
-- README opens with what it is, what it exposes, and how to keep it private.
-- The old hand-rolled install and the launchd guard are retired.
+- ~~A clean profile installs the bundle with one documented action and serves `/m/` with a minted token.~~ — done, twice (clean copy + this machine).
+- `npm test` green **on CI** — green locally (27), CI itself still missing.
+- README opens with what it is, what it exposes, and how to keep it private. — partially: the security warning is still below "Install" (blocker 4).
+- ~~The old hand-rolled install and the launchd guard are retired.~~ — the install is gone (dir deleted, rollback copy kept); the **guard is still loaded**, now protecting only the override row.
 
 ## Decisions worth not relitigating
 
