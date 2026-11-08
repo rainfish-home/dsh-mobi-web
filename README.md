@@ -40,11 +40,26 @@ The official web UI ships ~4.6 MB of JavaScript. Over a relayed mobile link (0.4
 
 ## Install
 
-1. Copy this directory to `~/.dsh/profiles/desktop/plugins/mobile-gateway/`.
-2. Add the plugin row to `~/.dsh/profiles/desktop/cordis.patch.yml` (see `cordis.snippet.yml`).
-3. Install the patch guard: `patch-guard/guard.py` + `~/Library/LaunchAgents/com.dsh.patch-guard.plist` (watch `cordis.patch.yml`, restore any block from `patch-guard/blocks/` whose marker is missing).
-4. Expose it: `tailscale serve --bg 3083`, or a Cloudflare tunnel ingress pointing at `127.0.0.1:3083`.
-5. Open `/m/` and log in with the configured token.
+```bash
+# from npm
+dsh plugin --profile desktop add dsh-mobile-gateway
+
+# or a local checkout
+dsh plugin --profile desktop add link:/path/to/dsh-mobi-web-plugin
+```
+
+The bundle ships its own `cordis.patch.yml`, so nothing in your profile is edited by hand. Then expose the port:
+
+```bash
+tailscale serve --bg 3083          # phone on the same tailnet
+# or a Cloudflare tunnel ingress: host → http://127.0.0.1:3083
+```
+
+Open `https://<your-host>/m/`.
+
+**The password.** If you do not set `token` in the patch config, one is minted on first start, written to `$DSH_HOME/mobile-gateway-token` (mode 0600) and printed in the startup log. Set `token: '…'` to choose your own, or `token: false` to disable the gate — only on a network you fully trust.
+
+> **Read this before exposing it.** The gateway proxies the *whole* harness, not just chat: whoever holds the token can send prompts, approve tool calls (including shell commands) and read every session on that machine. Put it behind Tailscale (private) rather than a public tunnel unless you know what you are doing, and never reuse a token from anywhere else.
 
 ## Configuration
 
@@ -52,7 +67,7 @@ The official web UI ships ~4.6 MB of JavaScript. Over a relayed mobile link (0.4
 | --- | --- | --- |
 | `listenHost` | `127.0.0.1` | never bind wider; a tunnel does the rest |
 | `listenPort` | `3083` | |
-| `token` | — | password for the cookie gate; empty disables the gate |
+| `token` | auto-minted | password for the cookie gate; `false` disables it |
 | `allowTokenUrl` | `false` | accept `?t=…` links (leaks via history, off by default) |
 | `blockPaths` | `[]` | path prefixes answered `204` to keep the page light |
 | `approvalPriority` | `'phone-first'` | `'desktop'` disables interception entirely |
@@ -88,6 +103,16 @@ The official web UI ships ~4.6 MB of JavaScript. Over a relayed mobile link (0.4
 - Images inside *historical* messages render as `[图片]` — only the fact they existed is kept.
 - Mermaid is vendored (857 KB brotli), lazy-loaded on the first diagram.
 - Sessions cannot be moved between workspaces — DSH derives membership from the session's `cwd` at creation.
+
+## Repo layout
+
+```
+lib/index.js      the gateway plugin (single file on purpose: it is hot-reloaded by filename)
+lib/page.html     the mobile page, served from disk on every request
+assets/           vendored mermaid (js + gz + br) and the app icon
+cordis.patch.yml  bundle patch — the install declaration
+test/             25 tests, fake host services, no network
+```
 
 ## Tests
 

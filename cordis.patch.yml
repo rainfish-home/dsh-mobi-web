@@ -1,0 +1,25 @@
+# ============================================================================
+# dsh-mobile-gateway —— DSH bundle patch
+# ============================================================================
+# 挂载声明。DSH 启动时按 bundle 层栈叠加各插件的 patch，本文件把网关插进
+# Web profile 的配置树；不需要手工改 profile 的 cordis.patch.yml。
+#
+# 安装：
+#   dsh plugin --profile web add dsh-mobile-gateway
+#   本地开发：
+#   dsh plugin --profile web add link:<本目录绝对路径>
+#
+# 装好后网关监听 127.0.0.1:3083，用它配合 Tailscale / Cloudflare Tunnel 暴露：
+#   tailscale serve --bg 3083
+# ============================================================================
+
+- insert:
+    - id: dsh-mobile-gateway
+      name: dsh-mobile-gateway
+      config:
+        listenHost: '127.0.0.1'
+        listenPort: 3083
+        # token 留空 = 首次启动自动生成，写在 $DSH_HOME/mobile-gateway-token，
+        # 启动日志里会打印入口地址。想自己指定就填一个字符串。
+        # token: ''
+        # token: false        # 显式关闭口令（仅限完全可信的内网，别这么用）

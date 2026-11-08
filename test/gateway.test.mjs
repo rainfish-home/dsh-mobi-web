@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import net from 'node:net'
 import zlib from 'node:zlib'
-import { createGateway } from '../index.mjs'
+import { createGateway } from '../lib/index.js'
 
 const startUpstream = (handler) => new Promise((resolve) => {
   const sockets = new Set()

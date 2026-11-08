@@ -8,7 +8,7 @@ The page shows its build in the footer (`446ms · v36`). Always read it before d
 
 | what | path |
 | --- | --- |
-| source (this repo) | `~/playground/home-fish/dsh-mobi-web-plugin` |
+| source (this repo) | `~/playground/home-fish/dsh-mobi-web-plugin` (`lib/`, `assets/`) |
 | deployed module + page | `~/.dsh/profiles/desktop/plugins/mobile-gateway/` |
 | plugin row | `~/.dsh/profiles/desktop/cordis.patch.yml` → `mobile-gateway-v<NN>` |
 | patch guard | `~/.dsh/profiles/desktop/patch-guard/{guard.py,blocks/mobile-gateway.yml}` |
@@ -16,7 +16,13 @@ The page shows its build in the footer (`446ms · v36`). Always read it before d
 | gateway listens on | `127.0.0.1:3083` |
 | public entrances | `https://dsh.hi5lingo.com/m/` (Cloudflare), `https://yuhuamacbook-pro.tailefe9a0.ts.net/m/` (Tailscale) |
 
-The login token lives in the patch row's `token:` field — do not paste it into docs or commits.
+The login token lives in the patch row's `token:` field — do not paste it into docs or commits. (With no token configured the plugin mints one into `$DSH_HOME/mobile-gateway-token`.)
+
+## The local install is still the hand-rolled one
+
+This repo is packaged as a DSH bundle (`dsh.bundle.patch`), but *this machine* still runs the old setup: a copied `gateway34.mjs` in the profile plus a hand-written patch row, kept alive by the launchd guard.
+
+Migrating is a one-liner — `dsh plugin --profile desktop add link:~/playground/home-fish/dsh-mobi-web-plugin` — and it deletes the whole copy/bump-id/refresh-snapshot ritual, because bundle patches are composed by the app instead of being rewritten by it. It has **not** been done or tested yet: the migration restarts the gateway, so do it when you can watch the app, and keep the guard installed until the bundle install is proven.
 
 ## Deploy recipe
 
