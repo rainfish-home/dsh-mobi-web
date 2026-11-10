@@ -35,6 +35,7 @@
   .dot.live{background:var(--accent);box-shadow:0 0 0 3px rgba(77,107,254,.16)}
   .t{font-size:14.5px;line-height:1.35;word-break:break-word;overflow-wrap:anywhere}
   .m{font-size:11.5px;color:var(--dim);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap}
+  .m .pc{color:#c8a85a;border:1px solid #3a3320;border-radius:99px;padding:0 6px;font-size:10px}
   .msg{padding:10px 14px}
   .msg .who{font-size:10.5px;color:var(--dim);letter-spacing:.4px;margin-bottom:3px}
   .msg .body{word-break:break-word;overflow-wrap:anywhere;font-size:14px;max-width:100%}
@@ -113,6 +114,13 @@
                padding:6px 12px;font-size:12.5px;font-family:inherit;flex:none;white-space:nowrap}
   .waiting .ap.allow{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
   .waiting .ap:disabled{opacity:.4}
+  .pcwait{flex:none;display:flex;gap:8px;align-items:center;padding:9px 14px;font-size:12px;
+          background:#151a12;border-top:1px solid #2b3320;color:#c8d6a8}
+  .pcwait b{font-weight:600;white-space:nowrap}
+  .pcwait code{background:#0d0f0c;border:1px solid #2b3320;border-radius:6px;padding:1px 6px;
+               font-size:11.5px;white-space:nowrap;flex:none;max-width:30vw;overflow:hidden;text-overflow:ellipsis}
+  .pcwait span{margin-left:auto;color:#7d8a68;font-size:11px;white-space:nowrap;min-width:0;
+               overflow:hidden;text-overflow:ellipsis}
   .composer{flex:none;width:100%;display:flex;gap:8px;align-items:flex-end;padding:8px 12px calc(10px + env(safe-area-inset-bottom));
             border-top:1px solid var(--line);background:var(--bg)}
   /* iOS Safari auto-zooms the whole page when a focused field's font-size is
@@ -144,6 +152,7 @@
   <button class="btn" id="refresh">刷新</button>
 </header>
 <main id="main"><div class="skel"></div><div class="skel"></div><div class="skel"></div></main>
+<div class="pcwait" id="pcwait" hidden></div>
 <div class="waiting" id="waiting" hidden></div>
 <button class="jump" id="jump" hidden>↓</button>
 <div class="lightbox" id="lightbox" hidden><button class="close" id="lightbox-close">×</button></div>
@@ -158,7 +167,7 @@
 <footer><span id="hint">只读</span><span id="stat"></span></footer>
 
 <script>
-const BUILD = 'v36'
+const BUILD = 'v37'
 // Anything that kills the script before the first render used to leave the phone
 // on a black screen with no clue. Surface it instead.
 function showFatal (message) {
@@ -179,10 +188,12 @@ window.addEventListener('unhandledrejection', (event) => {
 const $ = (id) => document.getElementById(id)
 const main = $('main'), title = $('title'), back = $('back'), hint = $('hint'), stat = $('stat')
 const composer = $('composer'), input = $('input'), sendBtn = $('send'), waiting = $('waiting'), run = $('run')
+const pcwait = $('pcwait')
 const jump = $('jump'), stop = $('stop'), chip = $('chip'), attach = $('attach'), fileInput = $('file'), conn = $('conn')
 const lightbox = $('lightbox')
 let pendingImages = []
 let running = false
+let phoneApproval = false
 let view = { name: 'list', id: null }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
@@ -207,7 +218,7 @@ function sessionRow (s) {
   return `<div class="row under" data-id="${esc(s.id)}">
       <div class="dot ${s.running ? 'live' : ''}"></div>
       <div style="flex:1;min-width:0"><div class="t">${esc(s.title || '(未命名)')}</div>
-        <div class="m"><span>${ago(s.updatedAt ?? s.createdAt)}</span>${s.running ? '<span>运行中</span>' : ''}</div>
+        <div class="m"><span>${ago(s.updatedAt ?? s.createdAt)}</span>${s.running ? '<span>运行中</span>' : ''}${s.waiting ? '<span class="pc">等待电脑审批</span>' : ''}</div>
       </div></div>`
 }
 
@@ -225,6 +236,7 @@ function renderTree (data) {
   back.hidden = true
   composer.hidden = true
   waiting.hidden = true
+  pcwait.hidden = true
   jump.hidden = true
   if (!groups.length) { main.innerHTML = '<div class="empty">还没有工作区</div>'; return }
 
@@ -300,8 +312,20 @@ function renderTree (data) {
   }
 }
 
+function renderDesktopWaiting (status) {
+  const count = Number(status && status.count) || 0
+  if (count === 0 || phoneApproval) { pcwait.hidden = true; pcwait.innerHTML = ''; return }
+  pcwait.hidden = false
+  const label = count > 1 ? `电脑上有 ${count} 个审批等待处理` : '电脑上等待审批'
+  pcwait.innerHTML = `<b>${label}</b>` +
+    (status.toolName ? `<code>${esc(status.toolName)}</code>` : '') +
+    `<span>在电脑上处理后会自动继续</span>`
+}
+
 function renderApproval (pending) {
+  phoneApproval = pending !== null && pending !== undefined
   if (!pending) { waiting.hidden = true; waiting.innerHTML = ''; return }
+  pcwait.hidden = true
   waiting.hidden = false
   waiting.innerHTML = `<b>等待批准</b><code>${esc(pending.toolName)}</code>` +
     (pending.reason ? `<span style="margin-left:0;color:#8a7a55">${esc(String(pending.reason).slice(0, 40))}</span>` : '') +
@@ -422,7 +446,10 @@ function renderSession (data) {
   hint.textContent = base(data.cwd) || ''
   back.hidden = false
   composer.hidden = false
-  renderApproval((data.approvals || [])[0] || null)
+  const phone = (data.approvals || [])[0] || null
+  const desktop = data.desktopApprovals || []
+  renderApproval(phone)
+  renderDesktopWaiting({ count: desktop.length, toolName: desktop[0] && desktop[0].toolName })
   if (!data.messages.length) { main.innerHTML = '<div class="empty">这个会话还没有消息</div>'; return }
   main.innerHTML = data.messages.map((m) => messageHTML(m.role, m.text)).join('')
   main.scrollTop = main.scrollHeight
@@ -594,8 +621,9 @@ function connectStream (id) {
     if (msg.kind === 'aend') { if (liveEl) liveEl = null; return }
     if (msg.kind === 'message') { appendMessage(msg.role, msg.text); return }
     if (msg.kind === 'tool') { run.hidden = false; appendMessage('tool', '工具调用'); return }
+    if (msg.kind === 'approval-status') { renderDesktopWaiting(msg); return }
     if (msg.kind === 'approval') { renderApproval(msg); return }
-    if (msg.kind === 'approval-done') { refreshOnce(); return }
+    if (msg.kind === 'approval-done') { phoneApproval = false; pcwait.hidden = true; refreshOnce(); return }
   }
   es.onerror = () => {
     setRunning(false)
@@ -623,6 +651,8 @@ async function loadList (resetScroll = true) {
   liveEl = null
   closeStream()
   run.hidden = true
+  pcwait.hidden = true
+  phoneApproval = false
   view = { name: 'list', id: null }
   history.replaceState(null, '', '#')
   try {
@@ -639,6 +669,8 @@ async function loadList (resetScroll = true) {
 }
 
 async function open (id) {
+  pcwait.hidden = true
+  phoneApproval = false
   view = { name: 'session', id }
   history.replaceState(null, '', '#' + id)
   main.innerHTML = '<div class="skel"></div><div class="skel"></div>'

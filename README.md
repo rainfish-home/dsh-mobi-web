@@ -4,7 +4,7 @@
 
 A phone-first web client for **DeepSeek Harness**, served by a sidecar gateway that runs *inside* the harness process.
 
-> **Not `dsh-mobile-gateway`.** There is an unrelated npm package by that name ("scan a QR code + settings page + live sync"). This one is different: a **32 KB page** instead of a proxied UI, **approvals that stay on the phone when the phone started the turn**, and Mermaid rendered on the device. Package and repo are both `dsh-mobi-web`; the local checkout directory is still named `dsh-mobi-web-plugin`.
+> **Not `dsh-mobile-gateway`.** There is an unrelated npm package by that name ("scan a QR code + settings page + live sync"). This one is different: a **32 KB page** instead of a proxied UI, **approvals that stay on the phone when the phone started the turn**, and Mermaid rendered on the device. Package, repo and checkout directory are all `dsh-mobi-web`.
 
 ```
 phone browser  ──HTTPS──▶  Cloudflare tunnel / Tailscale  ──▶  127.0.0.1:3083 (this plugin)  ──▶  harness host services
@@ -60,6 +60,7 @@ The official web UI ships ~4.6 MB of JavaScript. Over a relayed mobile link (0.4
 **Approve**
 - Approval requests arrive as cards over SSE
 - **Origin affinity**: if the *phone* started the turn, the approval stays on the phone. It waits up to 15 minutes, then **cancels** — it never falls back to a desktop nobody is sitting at. Desktop-origin turns keep the old behaviour (20 s grace, then hand back).
+- **Desktop-owned approvals are visible, not silent**: when the desktop is the one waiting, the phone shows a read-only “PC is waiting for approval · <tool>” banner (and a marker on the session row), so a phone that is not the owner no longer looks stuck. If the gateway's grace window hands a phone card back to the desktop, the stale card is dismissed and the banner replaces it.
 
 **Stay up**
 - SSE with exponential-backoff reconnect (2 s → 30 s) and a 6 s poll as fallback
@@ -73,8 +74,10 @@ The plugin is a DSH **bundle**: it ships its own `cordis.patch.yml`, so no profi
 
 ```bash
 dsh plugin --profile web add dsh-mobi-web     # from npm
-dsh plugin --profile web add link:/path/to/dsh-mobi-web-plugin   # from a checkout
+dsh plugin --profile web add link:/path/to/dsh-mobi-web   # from a checkout
 ```
+
+> **`link:` records an absolute path.** It is meant for a throwaway *development* profile, not for the profile your phone talks to: if you move the checkout, the link dangles, the bundle silently stops mounting, and `/m/` disappears with no error. Re-run the `add` after a move. For an unpublished build on your daily profile, `npm pack` and install the tarball — that is a copy, not a link.
 
 **The desktop profile** — `desktop` is reserved for the Electron-owned profile, and the *npm* CLI refuses to manage it. Install through the app's **plugin manager**, or with the Desktop-installed command (`dsh` inside the app bundle):
 
@@ -156,11 +159,11 @@ lib/index.js      the gateway plugin (single file on purpose)
 lib/page.html     the mobile page, served from disk on every request
 assets/           vendored mermaid (js + gz + br) and the app icon
 cordis.patch.yml  bundle patch — the install declaration
-test/             27 tests, fake host services, no network
+test/             34 tests, fake host services, no network
 ```
 
 ## Tests
 
 ```bash
-node --test test/*.test.mjs    # 27 tests, no network, fake host services
+node --test test/*.test.mjs    # 34 tests, no network, fake host services
 ```

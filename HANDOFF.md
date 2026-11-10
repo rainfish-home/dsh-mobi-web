@@ -1,8 +1,19 @@
 # HANDOFF
 
-State as of 2026-11-09: **published** as `dsh-mobi-web@0.1.0` on npm, release `v0.1.0`, CI green on Node 20 + 24, 27 tests. **This machine runs the bundle** from a `link:` to this checkout — `lib/index.js` and `lib/page.html` are served straight from here.
+State as of 2026-11-09: **published** as `dsh-mobi-web@0.1.0` on npm, release `v0.1.0`, CI green on Node 20 + 24, 27 tests.
 
-The bundle install path is verified twice: on a throwaway clean profile (step 2) and on the real desktop profile (step 3, `scripts/migrate-desktop-to-bundle.sh`). What the flip proved: the row composes as `127.0.0.1:3083`, `GET /__gw/health` 200, `/m/` 401 → 200 after a login with the existing password, `/m/api/sessions` returns real JSON, and both tunnels answer 200.
+**Two installs, deliberately:**
+
+- **Daily / phone** — the `desktop` profile installs the **registry copy** (`0.1.0`) into `node_modules`. It is a real directory, not a symlink, so moving this checkout cannot break the phone.
+- **Development** — `mobi-dev` installs `link:<this checkout>` and listens on **3183**. Start it from a terminal only while testing; it can run next to the daily gateway.
+
+The split exists because of a real incident: `desktop` used to `link:` this checkout, the repo moved from `home-fish/...` to `rainfish-home/...`, the symlink dangled, and the phone entrance silently went down on the next restart. `link:` records an **absolute path**; use it only for `mobi-dev`. `scripts/profile-mode.sh` switches and verifies either mode.
+
+The bundle install path is verified on a throwaway clean profile, on the real desktop profile (`scripts/migrate-desktop-to-bundle.sh`), and again from the registry. What the flip proved: the row composes as `127.0.0.1:3083`, `GET /__gw/health` 200, `/m/` 401 → 200 after a login, `/m/api/sessions` returns real JSON, and both tunnels answer 200.
+
+After the registry switch (2026-11-09, post-restart): `3083` health 200, login 302, `/m/` 200 at 33785 bytes — its sha256 equals the installed `lib/page.html`, so the running gateway is the registry copy — `/m/api/sessions` returns real JSON, Cloudflare and Tailscale both 200. The phone cookie survives: token and cookie-signature domain are unchanged.
+
+**GitHub webhook (separate from the mobile gateway).** On that restart, 3081 was listening but `POST /github` returned **404**: the adapter was not mounted, because both webhook packages were `0.2.1-rc.5` on a `0.2.2-rc.1` runtime. Upgraded both to `0.2.2-rc.1` on 2026-11-09 (backup: `~/.dsh/profiles/desktop/.backup-webhook-20261109-010838/`); the stale `workspacePath` (`home-fish/wukong`) is now `!!js process.env.DSH_GITHUB_REVIEW_WORKSPACE ?? '/Users/yuhua/playground/rainfish-home/wukong'`. **Restart pending**: after it, `POST /github` should answer 401 (invalid signature) instead of 404.
 
 The page shows its build in the footer (`446ms · v36`). Always read it before debugging a "it's broken on my phone" report — a stale build means a caching problem, not a code problem.
 
@@ -10,14 +21,17 @@ The page shows its build in the footer (`446ms · v36`). Always read it before d
 
 | what | path |
 | --- | --- |
-| source (this repo) | `~/playground/home-fish/dsh-mobi-web-plugin` (`lib/`, `assets/`) — **this is what the app loads** |
-| npm / bundle name | `dsh-mobi-web` (repo dir kept its old name) |
-| how the profile gets it | `~/.dsh/profiles/desktop/node_modules/dsh-mobi-web` → symlink to this checkout, listed in `package.json` `dependencies` **and** `dsh.profile.bundles` |
+| source (this repo) | `~/playground/rainfish-home/dsh-mobi-web` (`lib/`, `assets/`) |
+| npm / bundle name | `dsh-mobi-web` |
+| daily install | `~/.dsh/profiles/desktop` → `dsh-mobi-web@0.1.0` from the registry; `node_modules/dsh-mobi-web` is a **real directory** |
+| dev install | `~/.dsh/profiles/mobi-dev` → `link:` to this checkout; gateway **3183**, start with `dsh --profile mobi-dev --port 3184` |
+| switch / verify | `scripts/profile-mode.sh status` / `registry` / `local` / `restart` |
+| backup before the registry switch | `~/.dsh/profiles/desktop/.backup-before-registry-20261109-005716/` |
 | config override | `~/.dsh/profiles/desktop/cordis.patch.yml` → `- id: dsh-mobi-web` (port 3083 + `blockPaths`) |
 | patch guard | `~/.dsh/profiles/desktop/patch-guard/{guard.py,blocks/dsh-mobi-web.yml}` |
 | guard LaunchAgent | `~/Library/LaunchAgents/com.dsh.patch-guard.plist` |
 | login token | `$DSH_HOME/dsh-mobi-web-token` (mode 0600) |
-| gateway listens on | `127.0.0.1:3083` |
+| gateway listens on | `127.0.0.1:3083` (daily), `127.0.0.1:3183` (dev) |
 | public entrances | `https://dsh.hi5lingo.com/m/` (Cloudflare), `https://yuhuamacbook-pro.tailefe9a0.ts.net/m/` (Tailscale) |
 | rollback | `~/.dsh/profiles/desktop/.bundle-migration-20261108-231454/` (old row, guard block, `old-plugin/{gateway34.mjs,mobile.html}`) |
 
@@ -29,17 +43,39 @@ Observation log for that decision: the app last rewrote `cordis.patch.yml` on **
 
 ## Deploy recipe
 
-The ritual is gone — the profile links this directory, and bundle patches are composed by the app.
+**Daily / phone (registry).** The desktop profile runs the published copy; editing this checkout changes nothing until a new version is installed.
 
-- **`lib/page.html` only** — nothing to do. Read per request (`cache-control: no-store`).
-- **`lib/index.js` (or `cordis.patch.yml` in this repo)** — restart the app (or reload the plugin from the plugin manager). No copy, no bumped filename, no guard snapshot refresh: `dsh plugin add` deleted all of that.
-- **`package.json`** — rare; after changing the bundle declaration, re-run `dsh plugin --profile desktop add link:<this repo>` so `dsh.profile.bundles` is reconciled.
+- publish `0.1.1` (runbook below), then:
+  ```bash
+  dsh plugin --profile desktop add dsh-mobi-web@0.1.1
+  scripts/profile-mode.sh restart
+  ```
+- a bundle only mounts at boot, so a restart is required. `scripts/profile-mode.sh status desktop` prints spec / installed copy / health.
+
+**Development (checkout).** Use `mobi-dev`; its `link:` points here and the daily gateway is unaffected.
+
+- start: `dsh --profile mobi-dev --port 3184` → page on `http://127.0.0.1:3183/m/`
+- `lib/page.html` — refresh only (read per request, `cache-control: no-store`)
+- `lib/index.js` — restart the `mobi-dev` process
+- moving this checkout breaks the link; re-run `scripts/profile-mode.sh local mobi-dev`
+
+**An unpublished build on the daily profile (phone test).** Do not hand-copy files into `node_modules`, and do not leave `desktop` on `link:`:
+
+```bash
+npm pack                                   # dsh-mobi-web-0.1.1-rc.1.tgz
+dsh plugin --profile desktop add ./dsh-mobi-web-0.1.1-rc.1.tgz   # a copy, not a link
+scripts/profile-mode.sh restart
+# after testing:
+scripts/profile-mode.sh registry desktop 0.1.0
+```
 
 Verify after any of those:
 
 ```bash
+scripts/profile-mode.sh status desktop
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3083/__gw/health        # 200
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3083/m/                 # 401 without cookie
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3183/__gw/health        # 200 only while mobi-dev runs
 ```
 
 If the gateway answers on **3080** instead of 3083, the app dropped the override row: the guard restores it within ~5 min, or restart the app.
@@ -55,15 +91,28 @@ If the gateway answers on **3080** instead of 3083, the app dropped the override
 6. **iOS input zoom.** `font:16px/1.4 inherit` is invalid CSS (a shorthand cannot take `inherit`); the computed size fell to 13.3 px and Safari zoomed on focus. Use longhands.
 7. **SSE dies on lock screen.** That is fine: the approval stays pending and is re-delivered on reconnect via the session payload. Do not "fix" it by cancelling on disconnect — that was tried and reverted by product decision.
 8. **`?t=` links are disabled.** Every bookmarked link now lands on the password form. That is intentional (tokens leak via history/screenshots).
+9. **`link:` binds an absolute path.** The desktop profile once linked this checkout; after the repo moved to `rainfish-home/`, the symlink dangled and the bundle silently stopped mounting — no error in the app log, and `/m/` was simply gone. `link:` is for `mobi-dev`; the daily profile uses the registry copy. `scripts/profile-mode.sh status` is the check.
+10. **Restart = quit → wait for the process → open.** The gateway port goes `000` when the plugin disposes, a few seconds before the app process exits. `scripts/profile-mode.sh restart` therefore waits on `application ... is running`, then opens the full bundle path and retries if the launch is lost. Opening at port=000 alone re-activates the dying instance and leaves nothing running — that was the first version's bug.
 
 ## Verification
 
+Daily:
+
 ```bash
+scripts/profile-mode.sh status desktop
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3083/__gw/health        # 200
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3083/m/                 # 401 without cookie
 curl -s -c /tmp/j -o /dev/null -X POST -d "p=$TOKEN" http://127.0.0.1:3083/__gw/login
 curl -s -b /tmp/j http://127.0.0.1:3083/m/api/sessions | head -c 200
 curl -s -b /tmp/j http://127.0.0.1:3083/__gw/stats | python3 -m json.tool | head -30
+```
+
+Development (only while `mobi-dev` is running):
+
+```bash
+dsh --profile mobi-dev --port 3184
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3183/__gw/health        # 200
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3183/m/                 # 401 without cookie
 ```
 
 `/__gw/stats` reports `events/taken/delegated/cancelled` and `lastOrigin` — that is how you tell whether an approval went to the phone (`phone`) or was handed back (`desktop`).
@@ -80,7 +129,7 @@ From the last full review, in priority order:
 4. **`seenSessions` / `phoneTurns` never shrink.** Prune on `turn/end`.
 5. **No session search** on the list, and **no unread marker** — you cannot see which session changed while you were away.
 6. **Images in history render as `[图片]`** — fetching the attachment would need a new route.
-7. ~~**A `deploy.sh`** would remove the three-step ritual~~ — **obsolete**: there is no ritual left. The profile links this checkout, so a restart is the deploy. `scripts/migrate-desktop-to-bundle.sh` is the one-off that removed the old install.
+7. ~~**A `deploy.sh`** would remove the three-step ritual~~ — **obsolete, and replaced by a different split**: daily is a registry install + `scripts/profile-mode.sh restart`; development is a restart of `mobi-dev`. `scripts/migrate-desktop-to-bundle.sh` was the one-off that removed the old install.
 
 ## Publishing — pick this up in a new session
 
@@ -94,7 +143,7 @@ cordis.patch.yml   the install declaration (an install no longer edits the profi
 lib/index.js       the gateway (assets resolved through PACKAGE_ROOT)
 lib/page.html      the mobile page
 assets/            vendored mermaid (js + gz + br) and the app icon
-test/              27 tests, green from the new layout
+test/              34 tests, green from the new layout
 ```
 
 Three real changes came with the move, not just directory shuffling:
@@ -121,7 +170,7 @@ Availability checked at the time (re-check before publishing — npm names are g
 | `dsh-mobile-client` | free |
 | `dsh-mobile-web` | taken (0.1.7) |
 
-Renamed in `package.json`, `cordis.patch.yml` (`id`/`name`), the exported `name`, the HMAC cookie domain separator, log/error prefixes, and the minted-token filename (`$DSH_HOME/dsh-mobi-web-token`); README and this file updated. The GitHub repo is still `dsh-mobi-web-plugin`, so the `repository`/`homepage` URLs in `package.json` are unchanged on purpose — rename the repo (or update the URLs) before publishing.
+Renamed in `package.json`, `cordis.patch.yml` (`id`/`name`), the exported `name`, the HMAC cookie domain separator, log/error prefixes, and the minted-token filename (`$DSH_HOME/dsh-mobi-web-token`); README and this file updated. The GitHub repo was later renamed to `rainfish-home/dsh-mobi-web`, and the `repository`/`homepage` URLs in `package.json` follow it.
 
 The README now opens with the differentiation: the other package is "scan a QR code + a settings page + live sync"; this one is a **32 KB phone-first page**, **approvals that stay on the phone when the phone started the turn**, and Mermaid rendering. Without that sentence it reads like a duplicate.
 
@@ -186,11 +235,11 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
 - ~~A compatibility line~~ — in the README under "Limits worth knowing"; DSH `0.2.2-rc.1`, with the private-API caveat.
 - ~~CI~~ — `.github/workflows/test.yml`, `node --test test/*.test.mjs` on Node 20 and 24, push + PR. **Green on the first run** (42494632153): both jobs success, so the Node 20 floor holds too.
 - ~~English summary~~ — the README is English throughout.
-- `npm pack --dry-run`: 12 files, 3.0 MB packed / 5.7 MB unpacked (mermaid is 5.4 MB of it). Publishing needs the npm cache to be writable, which the agent sandbox blocks — do it from a normal terminal or with approval.
+- `npm pack --dry-run`: 14 files, ~3.0 MB packed / 5.7 MB unpacked (mermaid is 5.4 MB of it). Publishing needs the npm cache to be writable, which the agent sandbox blocks — do it from a normal terminal or with approval.
 
 ### Order of work
 
-1. ~~**Rename** to `dsh-mobi-web`~~ — **done** (package, `cordis.patch.yml` id/name, exported name, token filename, both docs). Remaining sub-item: the GitHub repo is still `dsh-mobi-web-plugin`.
+1. ~~**Rename** to `dsh-mobi-web`~~ — **done** (package, `cordis.patch.yml` id/name, exported name, token filename, both docs). GitHub repo renamed to `rainfish-home/dsh-mobi-web`; the three URLs in `package.json` follow it.
 2. ~~**Verify the bundle install on a clean profile**~~ — **done for the CLI path** (recipe and evidence under blocker 2). The desktop-plugin-manager half moves with step 3.
 3. ~~**Migrate this machine**~~ — **done 2026-11-08** with `scripts/migrate-desktop-to-bundle.sh`. The bundle is in the desktop profile's `dependencies` + `dsh.profile.bundles`, the token lives in `$DSH_HOME/dsh-mobi-web-token` (0600), and the old row is replaced by a 5-line config override.
 
