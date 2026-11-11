@@ -2,7 +2,7 @@
 
 State as of 2026-11-09: **published** as `dsh-mobi-web@0.1.0` on npm, release `v0.1.0`, CI green on Node 20 + 24, 27 tests.
 
-**2026-11-11 (checkout, not published): 0.1.2 fixes the false “发送失败” on queued prompts, the 工作区 back-button race, and phone-created Sessions landing under “Ungrouped”** — see Landmines 4, 5, 12, 13 and 14. The daily profile still runs 0.1.1 until the tarball is installed and the app restarted. The three duplicate prompts from the 15:48 incident were queued and have since run; the session's inbox is empty.
+**2026-11-11: 0.1.2 is on npm.** It fixes the false “发送失败” on queued prompts, the 工作区 back-button race, and phone-created Sessions landing under “Ungrouped” — see Landmines 4, 5, 12, 13 and 14. The first publish run died **after** `npm publish` on the `$VERSION…` bug (Landmine 15), so `main`/tag/GitHub release were not pushed; `scripts/publish.sh --tag-only` finishes that side without republishing. The daily profile still runs 0.1.1 until the registry build is installed and the app restarted. The three duplicate prompts from the 15:48 incident were queued and have since run; the session's inbox is empty.
 
 **Two installs, deliberately:**
 
@@ -99,6 +99,7 @@ If the gateway answers on **3080** instead of 3083, the app dropped the override
 12. **Async reads need a view generation.** `open()`, `refreshOnce()` and the `sendMessage` 700 ms reopen all await a fetch and then paint. Without a `viewSeq` check, a session response that lands after the 工作区 tap repaints the conversation over the list — the back button looks dead. Every navigation bumps `viewSeq`; every response checks it (and the session id) before touching the DOM/SSE. The list is painted immediately on back instead of waiting for its fetch.
 13. **A phone create must name the Workspace.** `sessionController.create({cwd})` sets the Session's directory but does not attach it to a Workspace; only `{workspaceId}` does. The old phone `＋` sent cwd only, so the desktop showed every phone-created Session under “Ungrouped” while the phone's list hid it by regrouping loose Sessions by cwd (2026-11-11: this session and the 小猪佩奇 one). `mobile.create()` now resolves `cwd` with `workspaceRegistry.resolveByPath()` and sends `workspaceId`. Existing cwd-only Sessions are repaired by `scripts/attach-sessions.mjs` (run while the app is quit; it backs up `workspace.json`).
 14. **A send error must not replace the conversation.** The old page did `main.innerHTML = '<div class="err">…'`, so one failed send erased the whole transcript (the 2026-11-11 screenshot). Errors now append a `.send-error` line under the messages, and the gateway's JSON `{error}` is parsed instead of being shown verbatim.
+15. **`$VERSION…` is one variable name.** In a UTF-8 locale Bash can absorb the following ellipsis into the variable name; under `set -u` the line dies as `VERSION…: unbound variable`. On 2026-11-11 that hit right after `npm publish` succeeded, so npm had 0.1.2 while `main`, the tag and the release did not. Use `${VERSION}…`. `scripts/publish.sh --tag-only` is the recovery path: it pushes the branch, creates/pushes the tag idempotently, and creates the GitHub release without republishing.
 
 ## Verification
 
