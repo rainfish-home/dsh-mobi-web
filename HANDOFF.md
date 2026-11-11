@@ -2,6 +2,8 @@
 
 State as of 2026-11-09: **published** as `dsh-mobi-web@0.1.0` on npm, release `v0.1.0`, CI green on Node 20 + 24, 27 tests.
 
+**2026-11-11 (checkout, not published): 0.1.2 fixes the false “发送失败” on queued prompts, the 工作区 back-button race, and phone-created Sessions landing under “Ungrouped”** — see Landmines 4, 5, 12, 13 and 14. The daily profile still runs 0.1.1 until the tarball is installed and the app restarted. The three duplicate prompts from the 15:48 incident were queued and have since run; the session's inbox is empty.
+
 **Two installs, deliberately:**
 
 - **Daily / phone** — the `desktop` profile installs the **registry copy** (`0.1.0`) into `node_modules`. It is a real directory, not a symlink, so moving this checkout cannot break the phone.
@@ -86,13 +88,17 @@ If the gateway answers on **3080** instead of 3083, the app dropped the override
 1. **`ctx` inside request handlers.** A bare `ctx.mobile` in a closure crashed the host with `ReferenceError: ctx is not defined` (dsh treats uncaught exceptions as fatal). Always capture first: `const mobile = options.mobile ?? null`.
 2. **`[hidden]` loses to class rules.** `.lightbox{display:flex}` outranks the UA `[hidden]{display:none}`, so every hidden element stayed visible — the full-screen overlay covered the whole page and read as a black screen. The page now has a global `[hidden]{display:none !important}`; keep it.
 3. **The app rewrites `cordis.patch.yml`.** It once shrank to 661 bytes and dropped hand-written rows. The guard restores registered blocks; it only knows about blocks in `patch-guard/blocks/`, and only if their `# guard-id:` marker is missing.
-4. **Approval ownership is per turn.** `phoneTurns` is set only after a prompt is *verified* to have landed, and cleared on `turn/end`. Marking it earlier meant a later desktop turn could inherit "phone origin" and never hand back.
-5. **Message payload caps.** `textOf` used to slice at 4 000 chars, silently truncating long answers. It is now 40 k per message plus a 120 k budget across the newest messages (oldest dropped first).
-6. **iOS input zoom.** `font:16px/1.4 inherit` is invalid CSS (a shorthand cannot take `inherit`); the computed size fell to 13.3 px and Safari zoomed on focus. Use longhands.
-7. **SSE dies on lock screen.** That is fine: the approval stays pending and is re-delivered on reconnect via the session payload. Do not "fix" it by cancelling on disconnect — that was tried and reverted by product decision.
-8. **`?t=` links are disabled.** Every bookmarked link now lands on the password form. That is intentional (tokens leak via history/screenshots).
-9. **`link:` binds an absolute path.** The desktop profile once linked this checkout; after the repo moved to `rainfish-home/`, the symlink dangled and the bundle silently stopped mounting — no error in the app log, and `/m/` was simply gone. `link:` is for `mobi-dev`; the daily profile uses the registry copy. `scripts/profile-mode.sh status` is the check.
-10. **Restart = quit → wait for the process → open.** The gateway port goes `000` when the plugin disposes, a few seconds before the app process exits. `scripts/profile-mode.sh restart` therefore waits on `application ... is running`, then opens the full bundle path and retries if the launch is lost. Opening at port=000 alone re-activates the dying instance and leaves nothing running — that was the first version's bug.
+4. **Approval ownership is per turn, keyed by the phone's rpcId.** `phoneTurns` is set when a `user/message` whose `source.rpcId` matches an admitted phone prompt is committed, and cleared on every `turn/end` (not only while a phone stream is open). A prompt queued behind a running turn must **not** make that running turn phone-owned; conversely, marking it before the message commits was the original "desktop turn never hands back" bug.
+5. **A queued prompt is not a transcript event.** `sessionController.prompt()` resolves after the Agent admits the message into its inbox; while a turn is running it waits in `inbox.nextTurn` and only appears as `user/message` when the next turn starts. The gateway used to poll `sessionQuery.readSurface()` for 3.6 s and reject the send when no event appeared — on 2026-11-11 that rejected a correctly queued message twice and put three copies in the real session's queue. Trust the admission result; the page sends a stable `requestId` so retries dedupe (`hasPromptRequest`).
+6. **Message payload caps.** `textOf` used to slice at 4 000 chars, silently truncating long answers. It is now 40 k per message plus a 120 k budget across the newest messages (oldest dropped first).
+7. **iOS input zoom.** `font:16px/1.4 inherit` is invalid CSS (a shorthand cannot take `inherit`); the computed size fell to 13.3 px and Safari zoomed on focus. Use longhands.
+8. **SSE dies on lock screen.** That is fine: the approval stays pending and is re-delivered on reconnect via the session payload. Do not "fix" it by cancelling on disconnect — that was tried and reverted by product decision.
+9. **`?t=` links are disabled.** Every bookmarked link now lands on the password form. That is intentional (tokens leak via history/screenshots).
+10. **`link:` binds an absolute path.** The desktop profile once linked this checkout; after the repo moved to `rainfish-home/`, the symlink dangled and the bundle silently stopped mounting — no error in the app log, and `/m/` was simply gone. `link:` is for `mobi-dev`; the daily profile uses the registry copy. `scripts/profile-mode.sh status` is the check.
+11. **Restart = quit → wait for the process → open.** The gateway port goes `000` when the plugin disposes, a few seconds before the app process exits. `scripts/profile-mode.sh restart` therefore waits on `application ... is running`, then opens the full bundle path and retries if the launch is lost. Opening at port=000 alone re-activates the dying instance and leaves nothing running — that was the first version's bug.
+12. **Async reads need a view generation.** `open()`, `refreshOnce()` and the `sendMessage` 700 ms reopen all await a fetch and then paint. Without a `viewSeq` check, a session response that lands after the 工作区 tap repaints the conversation over the list — the back button looks dead. Every navigation bumps `viewSeq`; every response checks it (and the session id) before touching the DOM/SSE. The list is painted immediately on back instead of waiting for its fetch.
+13. **A phone create must name the Workspace.** `sessionController.create({cwd})` sets the Session's directory but does not attach it to a Workspace; only `{workspaceId}` does. The old phone `＋` sent cwd only, so the desktop showed every phone-created Session under “Ungrouped” while the phone's list hid it by regrouping loose Sessions by cwd (2026-11-11: this session and the 小猪佩奇 one). `mobile.create()` now resolves `cwd` with `workspaceRegistry.resolveByPath()` and sends `workspaceId`. Existing cwd-only Sessions are repaired by `scripts/attach-sessions.mjs` (run while the app is quit; it backs up `workspace.json`).
+14. **A send error must not replace the conversation.** The old page did `main.innerHTML = '<div class="err">…'`, so one failed send erased the whole transcript (the 2026-11-11 screenshot). Errors now append a `.send-error` line under the messages, and the gateway's JSON `{error}` is parsed instead of being shown verbatim.
 
 ## Verification
 
@@ -126,7 +132,7 @@ From the last full review, in priority order:
 1. **No tests for approvals or SSE.** The two subtlest paths. They live inside `apply()` and are unreachable without cordis — extract an `createApprovalBroker({ … })` and test the origin/timeout matrix.
 2. **Host memory**: the brotli cache stores `{compressed, raw}` where `raw` is only used for a length header — up to ~54 MB resident. Store the length instead.
 3. ~~33 historical `gateway*.mjs` copies~~ — **done 2026-11-08**: the whole `plugins/mobile-gateway/` dir (41 files, 6.7 MB) is deleted; the two live files are kept in the migration backup for rollback.
-4. **`seenSessions` / `phoneTurns` never shrink.** Prune on `turn/end`.
+4. **`seenSessions` never shrinks.** `phoneTurns` is now pruned on every `turn/end`; `phoneRequests` is capped at 20 ids per session. Prune `seenSessions` on the same edge.
 5. **No session search** on the list, and **no unread marker** — you cannot see which session changed while you were away.
 6. **Images in history render as `[图片]`** — fetching the attachment would need a new route.
 7. ~~**A `deploy.sh`** would remove the three-step ritual~~ — **obsolete, and replaced by a different split**: daily is a registry install + `scripts/profile-mode.sh restart`; development is a restart of `mobi-dev`. `scripts/migrate-desktop-to-bundle.sh` was the one-off that removed the old install.
@@ -143,7 +149,7 @@ cordis.patch.yml   the install declaration (an install no longer edits the profi
 lib/index.js       the gateway (assets resolved through PACKAGE_ROOT)
 lib/page.html      the mobile page
 assets/            vendored mermaid (js + gz + br) and the app icon
-test/              34 tests, green from the new layout
+test/              46 tests, green from the new layout
 ```
 
 Three real changes came with the move, not just directory shuffling:
@@ -260,6 +266,8 @@ Login still worked after the restart (302 → `/m/` 200), so the file — not th
    git tag v0.1.0 && git push origin v0.1.0
    gh release create v0.1.0 --title v0.1.0 --notes-file docs/release-notes/v0.1.0.md
    ```
+
+   `scripts/publish.sh` automates the safe part of this runbook: it requires a clean tree unless `--allow-dirty`, runs the tests, scans the shipped files for the token/machine paths, verifies the tarball whitelist, runs `npm publish`, and waits for the registry. `--tag` also creates/pushes `vX.Y.Z` and the GitHub release; `--dry-run` runs every check and stops before publishing. It needs a valid `npm login` first (the 2026-11-11 token was already 401).
 
    Before publishing, scan the shipped set — `files` is `lib assets cordis.patch.yml docs README.md LICENSE` plus package.json, and **not** this file:
 

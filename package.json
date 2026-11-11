@@ -1,6 +1,6 @@
 {
   "name": "dsh-mobi-web",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "手机优先的 DeepSeek Harness 客户端：32KB 页面、SSE 实时输出、审批留在手机、Mermaid 图表、图片发送。无需改宿主，装成 bundle 即可用 Tailscale / Cloudflare 访问。",
   "keywords": [
     "dsh",

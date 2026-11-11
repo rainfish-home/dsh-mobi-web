@@ -353,7 +353,10 @@ test('mobile routes require the password and delegate to the adapter', async () 
     token: 's3cret',
     mobile: stubMobile({
       list: async () => { calls.push('list'); return { workspaces: [] } },
-      prompt: async (id, text) => { calls.push('prompt:' + id + ':' + text); return { accepted: true } },
+      prompt: async (id, text, _images, requestId) => {
+        calls.push('prompt:' + id + ':' + text + ':' + requestId)
+        return { accepted: true }
+      },
       create: async (cwd) => { calls.push('create:' + cwd); return { sessionId: 'session-new' } },
       cancel: async (id) => { calls.push('cancel:' + id); return { accepted: true } },
     }),
@@ -368,7 +371,7 @@ test('mobile routes require the password and delegate to the adapter', async () 
 
   assert.deepEqual(await (await fetch(`${base}/m/api/sessions`, { headers: { cookie } })).json(), { workspaces: [] })
   assert.deepEqual(
-    await (await fetch(`${base}/m/api/prompt`, { method: 'POST', headers, body: JSON.stringify({ id: 's1', text: 'hi' }) })).json(),
+    await (await fetch(`${base}/m/api/prompt`, { method: 'POST', headers, body: JSON.stringify({ id: 's1', text: 'hi', requestId: 'req-123' }) })).json(),
     { accepted: true },
   )
   assert.deepEqual(
@@ -379,7 +382,7 @@ test('mobile routes require the password and delegate to the adapter', async () 
     await (await fetch(`${base}/m/api/cancel`, { method: 'POST', headers, body: JSON.stringify({ id: 's1' }) })).json(),
     { accepted: true },
   )
-  assert.deepEqual(calls, ['list', 'prompt:s1:hi', 'create:/tmp/x', 'cancel:s1'])
+  assert.deepEqual(calls, ['list', 'prompt:s1:hi:req-123', 'create:/tmp/x', 'cancel:s1'])
 
   await gw.close(); await up.close()
 })

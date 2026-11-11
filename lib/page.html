@@ -136,6 +136,10 @@
   .composer button[disabled]{opacity:.35}
   .empty{color:var(--dim);text-align:center;padding:48px 24px;font-size:13px}
   .err{color:#e2706b;text-align:center;padding:24px;font-size:13px}
+  /* A send failure belongs under the conversation, not in place of it: the
+     old full-page error erased the history the reader was looking at. */
+  .send-error{color:#e2706b;text-align:left;padding:10px 14px;font-size:12.5px;line-height:1.5;
+              border-top:1px solid var(--line);background:#140f10}
   footer{flex:none;padding:8px 14px;border-top:1px solid var(--line);color:var(--dim);font-size:11px;display:flex;justify-content:space-between}
   .skel{height:52px;margin:0 14px;border-bottom:1px solid #16191e;opacity:.35;
         background:linear-gradient(90deg,#14171c 0%,#1b1f26 50%,#14171c 100%);background-size:200% 100%;
@@ -167,7 +171,7 @@
 <footer><span id="hint">只读</span><span id="stat"></span></footer>
 
 <script>
-const BUILD = 'v37'
+const BUILD = 'v38'
 // Anything that kills the script before the first render used to leave the phone
 // on a black screen with no clue. Surface it instead.
 function showFatal (message) {
@@ -195,6 +199,11 @@ let pendingImages = []
 let running = false
 let phoneApproval = false
 let view = { name: 'list', id: null }
+// Every navigation bumps this. An async read captures the value before it
+// awaits and refuses to paint if the user has moved on — otherwise a session
+// fetch that lands after the back button overwrites the list, and the back
+// button looks dead.
+let viewSeq = 0
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 const ago = (ms) => {
@@ -596,6 +605,8 @@ function appendMessage (role, text) {
   afterRender()
 }
 
+const isCurrentSession = (id) => view.name === 'session' && view.id === id
+
 function scheduleReconnect (id) {
   if (retryTimer) return
   const delay = retryDelay
@@ -611,8 +622,16 @@ function connectStream (id) {
   closeStream()
   if (typeof EventSource === 'undefined') return startPolling()
   es = new EventSource('/m/api/events?session=' + encodeURIComponent(id))
-  es.onopen = () => { conn.hidden = true; retryDelay = 2000; refreshOnce() }
+  es.onopen = () => {
+    if (!isCurrentSession(id)) return
+    conn.hidden = true
+    retryDelay = 2000
+    refreshOnce()
+  }
   es.onmessage = (ev) => {
+    // A closed EventSource can still deliver one queued frame; painting it
+    // after 工作区 was tapped would put the conversation back.
+    if (!isCurrentSession(id)) return
     let msg
     try { msg = JSON.parse(ev.data) } catch { return }
     if (msg.kind === 'state') { setRunning(msg.running); if (!msg.running) refreshOnce(); return }
@@ -626,6 +645,7 @@ function connectStream (id) {
     if (msg.kind === 'approval-done') { phoneApproval = false; pcwait.hidden = true; refreshOnce(); return }
   }
   es.onerror = () => {
+    if (!isCurrentSession(id)) return
     setRunning(false)
     conn.hidden = false
     closeStream()
@@ -636,8 +656,13 @@ function connectStream (id) {
 
 async function refreshOnce () {
   if (view.name !== 'session') return
+  const id = view.id
+  const seq = viewSeq
   try {
-    const data = await getJSON('/m/api/session?id=' + encodeURIComponent(view.id))
+    const data = await getJSON('/m/api/session?id=' + encodeURIComponent(id))
+    // The reader may have gone back (or opened another session) while this
+    // arrived; painting a stale session is what made 工作区 look unresponsive.
+    if (seq !== viewSeq || view.name !== 'session' || view.id !== id) return
     renderSession(data)
   } catch {}
 }
@@ -648,41 +673,115 @@ function startPolling () {
 }
 
 async function loadList (resetScroll = true) {
+  const seq = ++viewSeq
+  const wasSession = view.name === 'session'
   liveEl = null
   closeStream()
-  run.hidden = true
+  setRunning(false)
   pcwait.hidden = true
   phoneApproval = false
   view = { name: 'list', id: null }
   history.replaceState(null, '', '#')
+  // Give the tap instant feedback: do not leave the old conversation painted
+  // while the sessions request is in flight.
+  if (wasSession) {
+    back.hidden = true
+    composer.hidden = true
+    title.textContent = '工作区'
+    hint.textContent = ''
+    main.innerHTML = '<div class="skel"></div><div class="skel"></div>'
+  }
   try {
     const t0 = performance.now()
     const data = await getJSON('/m/api/sessions')
+    if (seq !== viewSeq) return
+    // renderTree() replaces main's children, which resets scrollTop; keep the
+    // reader's position for the 15 s refresh and reset it only on a real back.
+    const scrollY = main.scrollTop
     renderTree(data)
     // Coming back from a session must land on the newest work, which sits at the
     // top; the periodic refresh keeps whatever the reader is looking at.
-    if (resetScroll) main.scrollTop = 0
+    main.scrollTop = resetScroll ? 0 : scrollY
     stat.textContent = Math.round(performance.now() - t0) + 'ms · ' + BUILD
   } catch (e) {
+    if (seq !== viewSeq) return
     main.innerHTML = '<div class="err">加载失败：' + esc(e.message) + '</div>'
   }
 }
 
 async function open (id) {
+  if (typeof id !== 'string' || id === '') return
+  const seq = ++viewSeq
   pcwait.hidden = true
   phoneApproval = false
   view = { name: 'session', id }
   history.replaceState(null, '', '#' + id)
+  // The previous session's run state is not this session's; the stream's first
+  // `state` frame sets the truth a moment later.
+  setRunning(false)
   main.innerHTML = '<div class="skel"></div><div class="skel"></div>'
   try {
     const t0 = performance.now()
     const data = await getJSON('/m/api/session?id=' + encodeURIComponent(id))
+    // A back tap (or a newer open) happened while this was in flight.
+    if (seq !== viewSeq) return
     renderSession(data)
-    connectStream(view.id)
+    connectStream(id)
     stat.textContent = Math.round(performance.now() - t0) + 'ms'
   } catch (e) {
+    if (seq !== viewSeq) return
     main.innerHTML = '<div class="err">加载失败：' + esc(e.message) + '</div>'
   }
+}
+
+// A retry must reuse the request id: the host deduplicates a prompt by rpcId,
+// so a lost response cannot queue the same message twice.
+let pendingSend = null
+
+function newRequestId () {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  } catch {}
+  return 'r-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12)
+}
+
+// The gateway answers JSON errors; the old code pasted the whole body, which
+// is how the phone ended up showing {"error":"…"} verbatim.
+function errorText (raw) {
+  const text = String(raw || '').trim()
+  // A 401 from the gate is an HTML page, not JSON; do not paste markup.
+  if (text.startsWith('<')) return '登录已过期，刷新页面重新登录'
+  try {
+    const payload = JSON.parse(text)
+    if (payload && typeof payload.error === 'string' && payload.error !== '') return payload.error
+  } catch {}
+  return text.slice(0, 160) || '请求失败'
+}
+
+function showSendError (message) {
+  let el = document.getElementById('send-error')
+  if (el === null) {
+    el = document.createElement('div')
+    el.id = 'send-error'
+    el.className = 'send-error'
+    main.appendChild(el)
+  }
+  el.textContent = '发送失败：' + message
+  if (nearBottom()) main.scrollTop = main.scrollHeight
+}
+
+function clearSendError () {
+  const el = document.getElementById('send-error')
+  if (el !== null) el.remove()
+}
+
+let noteTimer = null
+function noteQueued () {
+  // A queued prompt is a success, but its bubble cannot appear until the
+  // running turn ends. Say so instead of leaving the phone looking stuck.
+  stat.textContent = '已排队 · 当前回合结束后发送'
+  clearTimeout(noteTimer)
+  noteTimer = setTimeout(() => { stat.textContent = '' }, 6000)
 }
 
 async function sendMessage () {
@@ -690,6 +789,11 @@ async function sendMessage () {
   if (!text || sendBtn.disabled) return
   sendBtn.disabled = true
   sendBtn.textContent = '…'
+  const imageKey = pendingImages.map((img) => img.name + ':' + img.mediaType + ':' + img.data.length).join('|')
+  if (pendingSend === null || pendingSend.text !== text ||
+      pendingSend.imageKey !== imageKey || pendingSend.sessionId !== view.id) {
+    pendingSend = { text, imageKey, sessionId: view.id, requestId: newRequestId() }
+  }
   try {
     const res = await fetch('/m/api/prompt', {
       method: 'POST',
@@ -698,16 +802,30 @@ async function sendMessage () {
         id: view.id,
         text,
         images: pendingImages.map((img) => ({ mediaType: img.mediaType, data: img.data, name: img.name })),
+        requestId: pendingSend.requestId,
       }),
     })
-    if (!res.ok) throw new Error((await res.text()).slice(0, 160))
+    if (!res.ok) throw new Error(errorText(await res.text()))
+    pendingSend = null
+    clearSendError()
     input.value = ''
     pendingImages = []
     renderChip()
     input.style.height = '44px'
-    setTimeout(() => open(view.id), 700)
+    if (running) {
+      // Admitted to the inbox; the transcript event arrives when this turn ends.
+      noteQueued()
+    } else {
+      // Do not read view.id when the timer fires: the reader may have tapped
+      // back (or another session) in the meantime, and open(null) would paint a
+      // load error over the list.
+      const sentTo = view.id
+      setTimeout(() => {
+        if (view.name === 'session' && view.id === sentTo) open(sentTo)
+      }, 700)
+    }
   } catch (e) {
-    main.innerHTML = '<div class="err">发送失败：' + esc(e.message) + '</div>'
+    showSendError(e.message)
   } finally {
     sendBtn.disabled = false
     sendBtn.textContent = '发送'
@@ -768,7 +886,7 @@ input.addEventListener('input', () => {
 })
 
 $('refresh').onclick = () => (view.name === 'session' ? open(view.id) : loadList())
-back.onclick = () => loadList()
+back.onclick = () => { if (view.name === 'session') loadList() }
 window.addEventListener('popstate', () => (location.hash ? open(location.hash.slice(1)) : loadList()))
 
 if (location.hash.length > 1) open(location.hash.slice(1))

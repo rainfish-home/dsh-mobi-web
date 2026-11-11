@@ -129,7 +129,7 @@ To override anything, add a row to your profile's `cordis.patch.yml`. A patch **
 | `GET /m/api/sessions` | workspace-grouped list (10 s cache) |
 | `GET /m/api/session?id=` | messages (newest 40 / 120 k chars) + pending approvals |
 | `GET /m/api/events?session=` | SSE: `state`, `message`, `astart`, `adelta`, `aend`, `tool`, `approval`, `approval-done` |
-| `POST /m/api/prompt` | `{id, text, images[]}` — verifies the message actually landed |
+| `POST /m/api/prompt` | `{id, text, images[], requestId?}` — admits the message (queue mode); the same `requestId` on a retry is deduplicated |
 | `POST /m/api/cancel` | interrupt the running turn |
 | `POST /m/api/create` | `{cwd}` → new session |
 | `POST /m/api/approve` | `{id, decision}` |
@@ -140,6 +140,9 @@ To override anything, add a row to your profile's `cordis.patch.yml`. A patch **
 
 - **No `0.0.0.0`.** `dsh` refuses to start on a non-loopback host, so a sidecar proxy is the only option; the tunnel terminates TLS outside.
 - **Cookie minting happens server-side.** Letting the launch-token flow redirect through `303` dropped the `SameSite=Strict` cookie on iOS, producing `ERR_TOO_MANY_REDIRECTS`.
+- **Create with the Workspace, not just the cwd.** `sessionController.create({cwd})` creates a Session with that directory but does **not** join a Workspace; the desktop then shows it under “Ungrouped” even though its cwd matches. The phone's `＋` resolves the directory through `workspaceRegistry.resolveByPath()` and passes `workspaceId` instead.
+- **Late reads lose.** Every navigation bumps a view sequence; a session or list response that belongs to an older view is discarded instead of repainting over the new one. Without it, a session fetch landing after the 工作区 tap put the conversation back and made the button look dead.
+- **A queued prompt is admitted, not yet in the transcript.** `sessionController.prompt()` resolves once the Agent has taken the message into its inbox. While another turn is running, the message waits in `inbox.nextTurn` and only becomes a `user/message` event when that turn ends — possibly minutes later. The gateway trusts that admission instead of polling the transcript (which used to reject correctly queued messages), and the page sends a retry key so a lost response cannot queue a second copy.
 - **Every request handler is wrapped in try/catch.** dsh treats an uncaught exception as fatal; a sidecar must never crash the host.
 - **The profile links the checkout.** Editing `lib/index.js` and restarting is the deploy; `lib/page.html` is read per request, so it needs no restart at all.
 
@@ -149,7 +152,7 @@ To override anything, add a row to your profile's `cordis.patch.yml`. A patch **
 - No push notifications: if the phone is asleep, an approval waits for you (up to 15 min) rather than pinging you.
 - Images inside *historical* messages render as `[图片]` — only the fact they existed is kept.
 - Mermaid is vendored (857 KB brotli), lazy-loaded on the first diagram.
-- Sessions cannot be moved between workspaces — DSH derives membership from the session's `cwd` at creation.
+- Sessions cannot be moved between workspaces — DSH derives membership from the session's `cwd` at creation. The phone's `＋` resolves the directory to its Workspace before creating, so new Sessions land in the right group; Sessions created cwd-only by older builds can be repaired with `node scripts/attach-sessions.mjs --list` while the app is quit.
 - **Compatibility**: verified on DSH `0.2.2-rc.1`. The gateway reads host services through `ctx.get('sessionQuery')` and friends — private API, not a stable contract. A dsh upgrade may break it; the page and the HTTP layer would keep working.
 
 ## Repo layout
@@ -159,11 +162,11 @@ lib/index.js      the gateway plugin (single file on purpose)
 lib/page.html     the mobile page, served from disk on every request
 assets/           vendored mermaid (js + gz + br) and the app icon
 cordis.patch.yml  bundle patch — the install declaration
-test/             34 tests, fake host services, no network
+test/             46 tests, fake host services, no network
 ```
 
 ## Tests
 
 ```bash
-node --test test/*.test.mjs    # 34 tests, no network, fake host services
+node --test test/*.test.mjs    # 46 tests, no network, fake host services
 ```
