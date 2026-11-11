@@ -2,6 +2,8 @@
 
 State as of 2026-11-09: **published** as `dsh-mobi-web@0.1.0` on npm, release `v0.1.0`, CI green on Node 20 + 24, 27 tests.
 
+**2026-11-11: 0.1.2 is published, tagged and released.** The next checkout change is 0.1.3 (unpublished): the footer shows the package version instead of a build counter, and blank Sessions are hidden from the list like the desktop. Publish with `scripts/publish.sh --tag` once committed.
+
 **2026-11-11: 0.1.2 is on npm.** It fixes the false “发送失败” on queued prompts, the 工作区 back-button race, and phone-created Sessions landing under “Ungrouped” — see Landmines 4, 5, 12, 13 and 14. The first publish run died **after** `npm publish` on the `$VERSION…` bug (Landmine 15), so `main`/tag/GitHub release were not pushed; `scripts/publish.sh --tag-only` finishes that side without republishing. The daily profile still runs 0.1.1 until the registry build is installed and the app restarted. The three duplicate prompts from the 15:48 incident were queued and have since run; the session's inbox is empty.
 
 **Two installs, deliberately:**
@@ -17,7 +19,7 @@ After the registry switch (2026-11-09, post-restart): `3083` health 200, login 3
 
 **GitHub webhook (separate from the mobile gateway).** On that restart, 3081 was listening but `POST /github` returned **404**: the adapter was not mounted, because both webhook packages were `0.2.1-rc.5` on a `0.2.2-rc.1` runtime. Upgraded both to `0.2.2-rc.1` on 2026-11-09 (backup: `~/.dsh/profiles/desktop/.backup-webhook-20261109-010838/`); the stale `workspacePath` (`home-fish/wukong`) is now `!!js process.env.DSH_GITHUB_REVIEW_WORKSPACE ?? '/Users/yuhua/playground/rainfish-home/wukong'`. **Restart pending**: after it, `POST /github` should answer 401 (invalid signature) instead of 404.
 
-The page shows its build in the footer (`446ms · v36`). Always read it before debugging a "it's broken on my phone" report — a stale build means a caching problem, not a code problem.
+The page shows its package version in the footer (`446ms · v0.1.3`, injected from `package.json` by the gateway). Always read it before debugging a "it's broken on my phone" report — a stale version means a caching problem or an old installed copy, not a code problem.
 
 ## Where things live
 
@@ -150,7 +152,7 @@ cordis.patch.yml   the install declaration (an install no longer edits the profi
 lib/index.js       the gateway (assets resolved through PACKAGE_ROOT)
 lib/page.html      the mobile page
 assets/            vendored mermaid (js + gz + br) and the app icon
-test/              46 tests, green from the new layout
+test/              48 tests, green from the new layout
 ```
 
 Three real changes came with the move, not just directory shuffling:

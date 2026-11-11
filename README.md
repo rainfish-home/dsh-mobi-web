@@ -42,7 +42,7 @@ The official web UI ships ~4.6 MB of JavaScript. Over a relayed mobile link (0.4
 **Browse**
 - Sessions grouped by workspace, newest activity first (same `SessionSummary.updatedAt` the desktop orders by)
 - Split into *active* (running, or touched within 24 h) and *older* (collapsed, remembered per workspace)
-- Archived sessions are filtered out; workspace collapse state persists
+- Archived sessions are filtered out; blank Sessions with no prompt are hidden like the desktop; workspace collapse state persists
 
 **Read**
 - Markdown: headings, lists, tables, blockquotes, links, inline code, fenced code
@@ -162,11 +162,11 @@ lib/index.js      the gateway plugin (single file on purpose)
 lib/page.html     the mobile page, served from disk on every request
 assets/           vendored mermaid (js + gz + br) and the app icon
 cordis.patch.yml  bundle patch — the install declaration
-test/             46 tests, fake host services, no network
+test/             48 tests, fake host services, no network
 ```
 
 ## Tests
 
 ```bash
-node --test test/*.test.mjs    # 46 tests, no network, fake host services
+node --test test/*.test.mjs    # 48 tests, no network, fake host services
 ```

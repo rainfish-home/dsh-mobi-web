@@ -171,7 +171,7 @@
 <footer><span id="hint">只读</span><span id="stat"></span></footer>
 
 <script>
-const BUILD = 'v38'
+const VERSION = '__MOBI_VERSION__'
 // Anything that kills the script before the first render used to leave the phone
 // on a black screen with no clue. Surface it instead.
 function showFatal (message) {
@@ -180,7 +180,7 @@ function showFatal (message) {
   box.innerHTML = ''
   const div = document.createElement('div')
   div.className = 'err'
-  div.textContent = '页面脚本出错：' + message + '（构建 ' + BUILD + '）'
+  div.textContent = '页面脚本出错：' + message + '（版本 ' + VERSION + '）'
   box.appendChild(div)
 }
 window.addEventListener('error', (event) => showFatal(event.message + ' @' + event.lineno))
@@ -702,7 +702,7 @@ async function loadList (resetScroll = true) {
     // Coming back from a session must land on the newest work, which sits at the
     // top; the periodic refresh keeps whatever the reader is looking at.
     main.scrollTop = resetScroll ? 0 : scrollY
-    stat.textContent = Math.round(performance.now() - t0) + 'ms · ' + BUILD
+    stat.textContent = Math.round(performance.now() - t0) + 'ms · ' + VERSION
   } catch (e) {
     if (seq !== viewSeq) return
     main.innerHTML = '<div class="err">加载失败：' + esc(e.message) + '</div>'
@@ -727,7 +727,7 @@ async function open (id) {
     if (seq !== viewSeq) return
     renderSession(data)
     connectStream(id)
-    stat.textContent = Math.round(performance.now() - t0) + 'ms'
+    stat.textContent = Math.round(performance.now() - t0) + 'ms · ' + VERSION
   } catch (e) {
     if (seq !== viewSeq) return
     main.innerHTML = '<div class="err">加载失败：' + esc(e.message) + '</div>'
@@ -781,7 +781,7 @@ function noteQueued () {
   // running turn ends. Say so instead of leaving the phone looking stuck.
   stat.textContent = '已排队 · 当前回合结束后发送'
   clearTimeout(noteTimer)
-  noteTimer = setTimeout(() => { stat.textContent = '' }, 6000)
+  noteTimer = setTimeout(() => { stat.textContent = VERSION }, 6000)
 }
 
 async function sendMessage () {

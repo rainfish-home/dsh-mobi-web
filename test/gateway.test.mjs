@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import net from 'node:net'
 import zlib from 'node:zlib'
+import { readFileSync } from 'node:fs'
 import { createGateway } from '../lib/index.js'
 
 const startUpstream = (handler) => new Promise((resolve) => {
@@ -384,6 +385,18 @@ test('mobile routes require the password and delegate to the adapter', async () 
   )
   assert.deepEqual(calls, ['list', 'prompt:s1:hi:req-123', 'create:/tmp/x', 'cancel:s1'])
 
+  await gw.close(); await up.close()
+})
+
+test('serves the mobile page with the package version in the footer', async () => {
+  const up = await startUpstream((_req, res) => res.end('app'))
+  const gw = await gatewayFor(up.port)
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const res = await fetch(`http://127.0.0.1:${gw.port()}/m/`)
+  assert.equal(res.status, 200)
+  const body = await res.text()
+  assert.ok(body.includes(`const VERSION = 'v${pkg.version}'`))
+  assert.doesNotMatch(body, /__MOBI_VERSION__/)
   await gw.close(); await up.close()
 })
 

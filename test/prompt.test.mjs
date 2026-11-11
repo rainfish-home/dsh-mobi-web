@@ -234,3 +234,44 @@ test('create() joins the workspace that owns the directory', async () => {
     await cleanup?.()
   }
 })
+
+test('list() hides blank Sessions like the desktop', async () => {
+  const port = await freePort()
+  let cleanup
+  const controller = {
+    list: async () => ({ items: [
+      { sessionId: 's1', cwd: '/w', updatedAt: 1, running: false, blank: true, agentAvailable: false },
+      { sessionId: 's2', cwd: '/w', updatedAt: 2, running: false, blank: false, agentAvailable: false },
+    ] }),
+  }
+  const query = {
+    listSessions: async () => [
+      { header: { id: 's1', cwd: '/w', createdAt: 1 } },
+      { header: { id: 's2', cwd: '/w', createdAt: 2 } },
+    ],
+    readTitleSnapshots: async (ids) => ids.map((id) => ({ sessionId: id, title: id === 's1' ? 'blank' : 'real' })),
+  }
+  const registry = {
+    list: () => [{ id: 'w1', title: 'W', path: '/w', sessionIds: ['s1', 's2'] }],
+    archivedSessionIds: [],
+  }
+  const ctx = {
+    webServer: { port: 1 },
+    logger: undefined,
+    get: (name) => (name === 'sessionController' ? controller : name === 'sessionQuery' ? query : name === 'workspaceRegistry' ? registry : undefined),
+    on: () => {},
+    effect: (fn) => { cleanup = fn() },
+  }
+  apply(ctx, { token: false, listenHost: '127.0.0.1', listenPort: port })
+  await waitForHealth(port)
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/m/api/sessions`)
+    assert.equal(res.status, 200)
+    const data = await res.json()
+    assert.deepEqual(data.workspaces.map((workspace) => workspace.sessions.map((session) => session.id)), [['s2']])
+    assert.equal(data.workspaces[0].sessions[0].title, 'real')
+    assert.equal(data.workspaces[0].sessions[0].blank, false)
+  } finally {
+    await cleanup?.()
+  }
+})

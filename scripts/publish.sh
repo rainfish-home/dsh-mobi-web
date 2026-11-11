@@ -187,7 +187,7 @@ print(f"pack: {len(paths)} files, {size_mb:.1f} MB")
 
 grep -q "createPromptAdmission" lib/index.js || die "lib/index.js is missing the prompt admission code"
 grep -q "workspaceRegistry" lib/index.js || die "lib/index.js is missing the workspace resolution"
-grep -q "const BUILD = 'v38'" lib/page.html || die "lib/page.html does not carry build v38"
+grep -q "const VERSION = '__MOBI_VERSION__'" lib/page.html || die "lib/page.html does not carry the version placeholder"
 
 # 7. Publish. npm opens the browser for web-auth/2FA when the account needs it.
 say ""
